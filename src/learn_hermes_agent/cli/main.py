@@ -5,7 +5,9 @@ import platform
 import sys
 
 from learn_hermes_agent import __version__
+from learn_hermes_agent.agent.core import AIAgent
 from learn_hermes_agent.config import get_app_home, get_config_path, load_config
+from learn_hermes_agent.providers.fake import FakeProviderTransport
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,6 +29,14 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="Show basic runtime and project configuration information.",
     )
+    chat_parser = subparsers.add_parser(
+        "chat",
+        help="Run one chat turn through the agent.",
+    )
+    chat_parser.add_argument(
+        "message",
+        help="User message to send to the agent.",
+    )
 
     return parser
 
@@ -46,6 +56,21 @@ def run_doctor() -> int:
     return 0
 
 
+def run_chat(message: str) -> int:
+    config = load_config()
+    provider = FakeProviderTransport(model=config["model"]["default"])
+    agent = AIAgent(
+        provider=provider,
+        max_iterations=config["agent"]["max_iterations"],
+    )
+
+    messages = agent.run_conversation(message)
+    final_message = messages[-1]
+
+    print(f"assistant: {final_message['content']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     # argparse 遇到 --help 会直接打印帮助并退出，流程不会往下走
@@ -57,6 +82,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "doctor":
         return run_doctor()
+
+    if args.command == "chat":
+        return run_chat(args.message)
 
     parser.print_help()
     return 0
