@@ -10,7 +10,16 @@
 2. 我们复刻哪些接口和行为？
 3. 如何不用大规模测试也能观察它是正确的？
 
+当前进度截至 2026-06-04：
+
+- Phase 0 已完成。
+- Phase 1 已完成最小版。
+- Phase 2 已完成最小版。
+- Phase 3 是下一步。
+
 ## Phase 0：项目基础与约定
+
+状态：已完成。
 
 目标：把当前仓库变成可用的 uv Python 项目，并建立目录规范。
 
@@ -34,6 +43,8 @@
 
 ## Phase 1：最小 AIAgent 和 provider 抽象
 
+状态：已完成最小版。当前只实现 fake provider；OpenAI-compatible provider 延后到 Phase 9 的 provider runtime 扩展。
+
 目标：跑通“用户输入 -> provider -> assistant 输出”的最小闭环。
 
 实现内容：
@@ -43,7 +54,6 @@
 - OpenAI message 格式。
 - `ProviderTransport` 协议。
 - `FakeProviderTransport`，用于本地无 API key 验证。
-- OpenAI-compatible provider 的最小实现。
 
 核心学习点：
 
@@ -54,9 +64,11 @@
 
 - 纯 fake provider 可返回固定回答。
 - CLI 可发一轮消息并显示回复。
-- `run_conversation()` 返回 `final_response`、`messages`、`api_calls`。
+- `run_conversation()` 返回包含 user message 和 assistant message 的消息列表。
 
 ## Phase 2：工具注册表和工具 schema
+
+状态：已完成最小版。当前只实现 `echo`，文件读取类工具暂不实现，避免在安全边界建立前过早加入文件系统能力。
 
 目标：复刻 Hermes 的工具自注册机制。
 
@@ -68,10 +80,8 @@
 - `discover_builtin_tools()`。
 - `get_tool_definitions()`。
 - `handle_function_call()`。
-- 至少实现 3 个低风险工具：
+- 低风险内置工具：
   - `echo`
-  - `read_file`
-  - `list_files`
 
 核心学习点：
 
@@ -85,6 +95,8 @@
 - 手动调用 `handle_function_call("echo", {"text": "hi"})` 返回 JSON 字符串。
 
 ## Phase 3：工具调用循环
+
+状态：下一步。
 
 目标：实现真正的 tool calling agent loop。
 

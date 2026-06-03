@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import platform
 import sys
 
 from learn_hermes_agent import __version__
 from learn_hermes_agent.agent.core import AIAgent
 from learn_hermes_agent.config import get_app_home, get_config_path, load_config
+from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport
 
 
@@ -29,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor",
         help="Show basic runtime and project configuration information.",
     )
+    # uv run learn-hermes-agent chat "hello"
     chat_parser = subparsers.add_parser(
         "chat",
         help="Run one chat turn through the agent.",
@@ -36,6 +39,26 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "message",
         help="User message to send to the agent.",
+    )
+    # uv run learn-hermes-agent tools
+    subparsers.add_parser(
+        "tools",
+        help="List available tool definitions."
+    )
+    # uv run learn-hermes-agent call-tool echo '{\"text\":\"hello\"}'
+    call_tool_parser = subparsers.add_parser(
+        "call-tool",
+        help="Call one tool manually with JSON arguments."
+    )
+    call_tool_parser.add_argument(
+        "name",
+        help="Tool name.",
+    )
+    call_tool_parser.add_argument(
+        "arguments",
+        nargs="?", # 指这个位置参数可传可不传，最多传一个。如果没有nargs="?"的话，那么arguments位置就是必填的，否则会报错
+        default="{}",
+        help="Tool arguments as a JSON object.",
     )
 
     return parser
@@ -71,6 +94,29 @@ def run_chat(message: str) -> int:
     return 0
 
 
+def run_tools() -> int:
+    definitions = get_tool_definitions()
+    # indent=2 表示：把 JSON 格式化成多行，并且每一层缩进 2 个空格。
+    # 没有 indent 时，输出会挤在一行：[{"type":"function","function":{"name":"echo"}}]
+    # 有indent时，就是展开的json，美化了
+    # ---
+    # ensure_ascii=False 表示：不要把非 ASCII 字符转义成 \uXXXX。
+    # 例如：{"description": "返回文本"}，ensure_ascii=True的话，有可能输出：{"description": "\u8fd4\u56de\u6587\u672c"}
+    print(json.dumps(definitions, indent=2, ensure_ascii=False))
+    return 0
+
+
+def run_call_tool(name: str, arguments: str) -> int:
+    try:
+        result_json = handle_function_call(name, arguments)
+    except (KeyError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(result_json)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     # argparse 遇到 --help 会直接打印帮助并退出，流程不会往下走
@@ -85,6 +131,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "chat":
         return run_chat(args.message)
+
+    if args.command == "tools":
+        return run_tools()
+
+    if args.command == "call-tool":
+        return run_call_tool(args.name, args.arguments)
 
     parser.print_help()
     return 0

@@ -18,6 +18,15 @@
 7. CLI / Gateway / ACP / TUI 等入口逐层接入
 8. memory、skills、plugins、context compression、cron、batch trajectory 等高级能力
 
+## 当前进度
+
+截至 2026-06-04：
+
+- Phase 0 已完成：uv 项目基础、`src/` 包结构、最小 CLI、`doctor`。
+- Phase 1 已完成：最小 `AIAgent`、provider 抽象、fake provider、单轮 `chat`。
+- Phase 2 已完成：最小工具注册表、`echo` 工具、tool schema 输出、手动工具分发。
+- 下一步：Phase 3，实现 `assistant.tool_calls -> role=tool -> assistant(final)` 的工具调用循环。
+
 中文计划与交接文档见：
 
 - [项目总览](docs/00-overview.md)

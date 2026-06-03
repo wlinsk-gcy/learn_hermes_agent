@@ -29,7 +29,7 @@
 
 ## Phase 0：项目基础
 
-**状态：未开始**
+**状态：已完成**
 
 **目标：** 建立 uv 项目和包结构。
 
@@ -54,13 +54,14 @@
 
 ```powershell
 uv run python -m learn_hermes_agent --help
+uv run learn-hermes-agent doctor
 ```
 
 应显示命令帮助，不报 import 错误。
 
 ## Phase 1：最小 Agent Loop
 
-**状态：未开始**
+**状态：已完成**
 
 **目标：** 跑通一轮无工具对话。
 
@@ -82,11 +83,15 @@ uv run python -m learn_hermes_agent --help
 
 **验收：**
 
-运行 CLI 输入一句话，返回 fake assistant response。
+运行 CLI 输入一句话，返回 fake assistant response：
+
+```powershell
+uv run learn-hermes-agent chat "hello"
+```
 
 ## Phase 2：Tool Registry
 
-**状态：未开始**
+**状态：已完成（最小版）**
 
 **目标：** 复刻工具注册和 schema 暴露。
 
@@ -94,7 +99,6 @@ uv run python -m learn_hermes_agent --help
 
 - Create: `src/learn_hermes_agent/tools/registry.py`
 - Create: `src/learn_hermes_agent/tools/echo.py`
-- Create: `src/learn_hermes_agent/tools/file_tools.py`
 - Create: `src/learn_hermes_agent/model_tools.py`
 
 **步骤：**
@@ -102,19 +106,26 @@ uv run python -m learn_hermes_agent --help
 1. 定义 `ToolEntry`。
 2. 定义 `ToolRegistry.register()`。
 3. 定义 `discover_builtin_tools()`。
-4. 实现 `echo`、`read_file`、`list_files`。
+4. 实现低风险 `echo` 工具。
 5. 实现 `get_tool_definitions()`。
 6. 实现 `handle_function_call()`。
-7. CLI 增加 `/tools` 或 debug 子命令。
+7. CLI 增加 `tools` 和 `call-tool` debug 子命令。
 8. 更新进度文档。
 
 **验收：**
 
-手工调用工具分发可返回 JSON 字符串。CLI 能列出工具名和 schema。
+手工调用工具分发可返回 JSON 字符串。CLI 能列出工具名和 schema：
+
+```powershell
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent call-tool echo '{\"text\":\"hello\"}'
+```
+
+说明：Windows PowerShell 下 JSON 参数需要保留内部双引号，当前推荐使用上面的转义形式。
 
 ## Phase 3：Tool Calling Conversation Loop
 
-**状态：未开始**
+**状态：下一步**
 
 **目标：** 实现 assistant tool_calls 和 role=tool result 的完整配对。
 

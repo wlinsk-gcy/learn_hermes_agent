@@ -42,10 +42,12 @@
 
 ## 当前状态
 
-截至 2026-06-03：
+截至 2026-06-04：
 
 - 已分析官方文档和本地源码结构。
 - 已建立中文路线图和 session 交接文档。
-- 尚未开始实现代码。
+- Phase 0 已完成：uv 项目、`pyproject.toml`、`src/` 包结构、最小 CLI、`doctor` 命令。
+- Phase 1 已完成：最小 `AIAgent`、OpenAI 风格 message、`ProviderTransport` 协议、`FakeProviderTransport`、`chat` 命令。
+- Phase 2 已完成：最小 `ToolRegistry`、`ToolEntry`、内置 `echo` 工具、tool schema 输出、`model_tools.handle_function_call()`、`tools` / `call-tool` CLI 命令。
 
-下一步应执行 `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md` 的 Phase 0。
+下一步应执行 `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md` 的 Phase 3：Tool Calling Conversation Loop。

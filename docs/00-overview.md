@@ -63,6 +63,23 @@ tools/registry.py
 
 这条链是复刻的第一优先级。
 
+## 当前实现进度
+
+截至 2026-06-04，学习项目已经完成前三个基础阶段：
+
+- Phase 0：项目基础、uv 配置、`src/learn_hermes_agent` 包结构、最小 CLI。
+- Phase 1：最小 `AIAgent`、OpenAI 风格消息字典、`ProviderTransport` 协议、`FakeProviderTransport`。
+- Phase 2：最小 `ToolRegistry`、`ToolEntry`、内置 `echo` 工具、tool schema 输出、`handle_function_call()` 手动分发。
+
+下一阶段是 Phase 3：把工具注册表接入 agent loop，实现 Hermes 最关键的工具调用消息配对：
+
+```text
+user
+assistant(tool_calls)
+tool
+assistant(final)
+```
+
 ## 文档地图
 
 - `docs/01-architecture-analysis.md`：Hermes 架构分析。
