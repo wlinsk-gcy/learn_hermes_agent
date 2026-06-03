@@ -1,0 +1,371 @@
+# 复刻路线图
+
+## 总体策略
+
+路线采用“可运行闭环优先，逐层逼近 1:1”。
+
+每一阶段都要回答三个问题：
+
+1. 这一层在 Hermes 中解决什么问题？
+2. 我们复刻哪些接口和行为？
+3. 如何不用大规模测试也能观察它是正确的？
+
+## Phase 0：项目基础与约定
+
+目标：把当前仓库变成可用的 uv Python 项目，并建立目录规范。
+
+实现内容：
+
+- 初始化 `pyproject.toml`。
+- 设定包名，例如 `learn_hermes_agent`。
+- 建立基础目录：
+  - `src/learn_hermes_agent/`
+  - `src/learn_hermes_agent/agent/`
+  - `src/learn_hermes_agent/tools/`
+  - `src/learn_hermes_agent/cli/`
+  - `src/learn_hermes_agent/state/`
+  - `src/learn_hermes_agent/providers/`
+- 建立 `hermes` 风格配置目录规则，但先使用项目内临时目录，避免污染真实 `~/.hermes`。
+
+验收：
+
+- `uv run python -m learn_hermes_agent --help` 能运行。
+- 文档和代码目录一致。
+
+## Phase 1：最小 AIAgent 和 provider 抽象
+
+目标：跑通“用户输入 -> provider -> assistant 输出”的最小闭环。
+
+实现内容：
+
+- `AIAgent` 类。
+- `run_conversation(user_message, conversation_history=None)`。
+- OpenAI message 格式。
+- `ProviderTransport` 协议。
+- `FakeProviderTransport`，用于本地无 API key 验证。
+- OpenAI-compatible provider 的最小实现。
+
+核心学习点：
+
+- Hermes 为什么把 provider 差异压到 transport 层。
+- agent loop 为什么只处理规范化后的 assistant message。
+
+验收：
+
+- 纯 fake provider 可返回固定回答。
+- CLI 可发一轮消息并显示回复。
+- `run_conversation()` 返回 `final_response`、`messages`、`api_calls`。
+
+## Phase 2：工具注册表和工具 schema
+
+目标：复刻 Hermes 的工具自注册机制。
+
+实现内容：
+
+- `ToolRegistry`。
+- `ToolEntry`。
+- `registry.register(...)`。
+- `discover_builtin_tools()`。
+- `get_tool_definitions()`。
+- `handle_function_call()`。
+- 至少实现 3 个低风险工具：
+  - `echo`
+  - `read_file`
+  - `list_files`
+
+核心学习点：
+
+- 工具不是硬编码 if/else，而是 registry + schema + handler。
+- toolset 是能力分组，不是目录名。
+
+验收：
+
+- 启动时自动发现工具。
+- CLI 或 debug 命令能列出 tool definitions。
+- 手动调用 `handle_function_call("echo", {"text": "hi"})` 返回 JSON 字符串。
+
+## Phase 3：工具调用循环
+
+目标：实现真正的 tool calling agent loop。
+
+实现内容：
+
+- provider 返回 assistant `tool_calls`。
+- agent 校验 tool name。
+- agent 校验 JSON arguments。
+- append assistant tool_calls message。
+- 执行工具。
+- append role=tool result。
+- 回到下一次 provider call。
+- 没有 tool_calls 时结束。
+
+核心学习点：
+
+- tool_call 和 tool_result 必须通过 `tool_call_id` 成对出现。
+- tool 执行结果是对话上下文的一部分。
+- invalid tool name / invalid JSON 必须反馈给模型，而不是直接崩溃。
+
+验收：
+
+- fake provider 能模拟“先调用 echo，再输出最终回答”。
+- messages 中能看到 user -> assistant(tool_calls) -> tool -> assistant。
+
+## Phase 4：Session Store
+
+目标：复刻 Hermes 的持久会话基础。
+
+实现内容：
+
+- SQLite `sessions` 表。
+- SQLite `messages` 表。
+- WAL mode。
+- `create_session()`。
+- `add_message()` / `replace_session_messages()`。
+- `get_session_messages()`。
+- 持久化 `system_prompt`。
+- FTS5 可用时创建全文索引；不可用时优雅降级。
+
+核心学习点：
+
+- Gateway/ACP 每轮可能创建新 agent，所以 session DB 是恢复上下文的关键。
+- system prompt 持久化和 prefix cache 稳定性相关。
+
+验收：
+
+- CLI 退出再进入，可读取历史 session。
+- SQLite 中能查到 messages。
+- FTS5 可用时能搜索历史内容。
+
+## Phase 5：System Prompt Builder
+
+目标：复刻 Hermes 的 prompt 分层。
+
+实现内容：
+
+- stable/context/volatile 三层。
+- 读取 `AGENTS.md`、`SOUL.md` 等 context 文件。
+- context 文件注入前做简单 prompt injection 扫描。
+- session 内缓存 system prompt。
+- context compression 后提供 invalidation 接口。
+
+核心学习点：
+
+- prompt cache 命中依赖字节稳定。
+- memory 和 context 不能随意每轮重建。
+
+验收：
+
+- 同一 session 多轮 system prompt 字节不变。
+- 新 session 可重新构建。
+- 修改 context 文件只在新 session 或显式 reload 后生效。
+
+## Phase 6：经典 CLI 和 Slash Commands
+
+目标：实现可日常使用的交互 CLI。
+
+实现内容：
+
+- `hermes` 命令入口。
+- 简单 REPL。
+- `/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
+- 中心化 `CommandRegistry`。
+- CLI 从 `config.yaml` 读取 provider/model/toolsets。
+
+核心学习点：
+
+- CLI 是入口层，不应拥有 agent 内核逻辑。
+- slash command registry 应为 Gateway/TUI 复用。
+
+验收：
+
+- CLI 可连续多轮对话。
+- `/new` 创建新 session。
+- `/tools` 展示当前可用工具。
+
+## Phase 7：上下文压缩与预算
+
+目标：理解 Hermes 如何避免长会话爆上下文。
+
+实现内容：
+
+- `IterationBudget`。
+- 粗略 token 估算。
+- `ContextCompressor` 接口。
+- 简单摘要压缩策略。
+- parent_session_id 链。
+- compression lock 的简化实现。
+
+核心学习点：
+
+- 压缩不是删历史，而是创建可追踪的新 session 边界。
+- 工具 schema 也占上下文。
+
+验收：
+
+- 达到阈值后触发压缩。
+- 压缩后继续对话不丢最后几轮上下文。
+- session DB 中能看到 parent-child 关系。
+
+## Phase 8：Memory 和 Skills
+
+目标：复刻 Hermes 的学习闭环。
+
+实现内容：
+
+- `MEMORY.md` / `USER.md` 风格内置 memory store。
+- `memory` 工具：add / replace / view。
+- memory 注入 system prompt。
+- `skills/` 目录。
+- `SKILL.md` frontmatter。
+- skill 索引和 skill command。
+- `skill_manage` 的 create / patch / list。
+
+核心学习点：
+
+- memory 存稳定事实。
+- skill 存可复用流程。
+- skill 注入方式要避免破坏 prompt cache。
+
+验收：
+
+- agent 可写入 memory。
+- 新 session 能看到 memory。
+- skill 可被列出、读取和作为 user message 注入。
+
+## Phase 9：Provider Runtime 扩展
+
+目标：把单一 OpenAI-compatible provider 扩展为 Hermes 风格 runtime。
+
+实现内容：
+
+- provider 配置解析。
+- runtime provider resolver。
+- OpenAI-compatible streaming。
+- Anthropic adapter。
+- Gemini adapter。
+- Codex Responses adapter 的简化版。
+- usage normalization。
+- fallback chain。
+
+核心学习点：
+
+- agent loop 不应该知道每个 provider 的原始响应结构。
+- provider 差异通过 normalize_response 收敛。
+
+验收：
+
+- 至少两个 provider 可切换。
+- streaming 和非 streaming 都能返回同一规范结构。
+- fallback 能在 fake provider 失败时切换。
+
+## Phase 10：安全、审批和执行环境
+
+目标：复刻 Hermes 工具安全边界。
+
+实现内容：
+
+- 文件路径安全。
+- 写文件审批。
+- terminal 命令审批。
+- per-session approval context。
+- checkpoint 简化版。
+- terminal backend 先实现 local，再扩展 Docker/SSH。
+
+核心学习点：
+
+- 工具能力越强，越需要运行态身份和审批隔离。
+- Gateway/ACP/CLI 对 approval 的交互方式不同，但底层策略应统一。
+
+验收：
+
+- 未审批时危险命令被拦截。
+- 同一 session 的 yolo/approval 状态不泄漏到其他 session。
+
+## Phase 11：Gateway
+
+目标：复刻消息平台网关的核心，而不是一次性接全平台。
+
+实现内容：
+
+- `GatewayRunner`。
+- `BasePlatformAdapter`。
+- 先实现 `api_server` 或 `webhook` adapter。
+- session key 映射。
+- 运行中消息排队。
+- `/stop`、`/new`、`/status`。
+- approval command bypass。
+
+核心学习点：
+
+- Gateway 是 agent runtime 的异步入口。
+- 控制命令必须绕过普通消息队列。
+
+验收：
+
+- HTTP 请求可触发 agent turn。
+- 同一 session 运行时新消息会排队或中断。
+- `/stop` 能停止当前 turn。
+
+## Phase 12：Plugins 和 Lazy Dependencies
+
+目标：复刻 Hermes 可扩展能力。
+
+实现内容：
+
+- plugin manifest。
+- plugin discovery。
+- `PluginContext`。
+- 注册工具、slash command、provider、hook。
+- hook 点：
+  - pre_api_request
+  - pre_llm_call
+  - post_llm_call
+  - transform_llm_output
+  - pre_tool_call
+  - post_tool_call
+  - transform_tool_result
+- lazy deps 配置。
+
+核心学习点：
+
+- 插件扩展能力，但不能破坏核心协议。
+- override 必须显式。
+
+验收：
+
+- 一个 demo 插件能注册工具。
+- 一个 demo 插件能拦截并转换 LLM 输出。
+
+## Phase 13：ACP、TUI、Cron、Batch
+
+目标：复刻外围入口和研究能力。
+
+实现内容：
+
+- ACP server 简化实现。
+- TUI gateway JSON-RPC 后端。
+- Cron scheduler。
+- Batch runner。
+- Trajectory 保存与压缩。
+
+核心学习点：
+
+- Hermes 的强大来自同一内核被多个入口复用。
+- Batch/trajectory 是研究和训练数据生成路径。
+
+验收：
+
+- ACP/TUI/Gateway/CLI 至少共享同一个 agent runtime。
+- Cron 可按配置触发一个 prompt。
+- batch runner 可并行执行多个 prompt 并保存结果。
+
+## 1:1 复刻的定义
+
+这里的 1:1 分四层：
+
+1. 接口等价：命令、配置、工具 schema、消息结构尽量一致。
+2. 行为等价：同类输入下有同类状态变化和错误恢复。
+3. 架构等价：模块职责和依赖方向一致。
+4. 边缘等价：处理中断、压缩、fallback、invalid JSON、prompt cache、gateway queue 等复杂场景。
+
+前 6 个阶段追求架构和核心行为等价。后续阶段逐步覆盖边缘等价。
