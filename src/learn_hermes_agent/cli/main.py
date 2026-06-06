@@ -7,9 +7,10 @@ import sys
 
 from learn_hermes_agent import __version__
 from learn_hermes_agent.agent.core import AIAgent
-from learn_hermes_agent.config import get_app_home, get_config_path, load_config
+from learn_hermes_agent.config import get_app_home, get_config_path, get_state_db_path, load_config
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
+from learn_hermes_agent.state.session_db import SessionStore
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,7 +72,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tool arguments as a JSON object.",
     )
 
+    subparsers.add_parser(
+        "sessions",
+        help="List persisted chat sessions.",
+    )
+    show_session_parser = subparsers.add_parser(
+        "show-session",
+        help="Show persisted messages for one session."
+    )
+    show_session_parser.add_argument(
+        "session_id",
+        help="Session id to inspect.",
+    )
+
     return parser
+
+
+def get_session_store() -> SessionStore:
+    store = SessionStore(get_state_db_path())
+    store.initialize()
+    return store
 
 
 def run_doctor() -> int:
@@ -101,13 +121,18 @@ def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = Fal
     )
 
     messages = agent.run_conversation(message)
+    store = get_session_store()
+    session_id = store.create_session(title=message[:80])
+    store.append_messages(session_id, messages)
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))
+        print(f"session_id: {session_id}")
         return 0
 
     final_message = messages[-1]
     print(f"assistant: {final_message['content']}")
+    print(f"session_id: {session_id}")
     return 0
 
 
@@ -134,6 +159,19 @@ def run_call_tool(name: str, arguments: str) -> int:
     return 0
 
 
+def run_sessions() -> int:
+    store = get_session_store()
+    sessions = store.list_sessions()
+    print(json.dumps(sessions, indent=2, ensure_ascii=False))
+    return 0
+
+
+def run_show_session(session_id: str) -> int:
+    store = get_session_store()
+    messages = store.get_session_messages(session_id)
+    print(json.dumps(messages, indent=2, ensure_ascii=False))
+    return 0
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     # argparse 遇到 --help 会直接打印帮助并退出，流程不会往下走
@@ -158,6 +196,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "call-tool":
         return run_call_tool(args.name, args.arguments)
+
+    if args.command == "sessions":
+        return run_sessions()
+
+    if args.command == "show-session":
+        return run_show_session(args.session_id)
 
     parser.print_help()
     return 0
