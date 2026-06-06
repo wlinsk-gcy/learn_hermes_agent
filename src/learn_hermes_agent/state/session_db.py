@@ -35,11 +35,13 @@ class SessionStore:
                 create table if not exists sessions (
                     id text primary key,
                     title text,
+                    system_prompt text,
                     created_at text not null,
                     updated_at text not null
                 )
                 """
             )
+            self._ensure_column(conn, "sessions", "system_prompt", "text")
             conn.execute(
                 """
                 create table if not exists messages (
@@ -59,27 +61,27 @@ class SessionStore:
             conn.execute(
                 """
                 create index if not exists idx_messages_session_id_id
-                on messages(session_id, id)
+                    on messages(session_id, id)
                 """
             )
             conn.execute(
                 """
                 create index if not exists idx_sessions_updated_at
-                on sessions(updated_at)
+                    on sessions(updated_at)
                 """
             )
 
-    def create_session(self, *, title: str | None = None) -> str:
+    def create_session(self, *, title: str | None = None,system_prompt: str | None = None,) -> str:
         session_id = str(uuid.uuid4())
         now = utc_now_iso()
 
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO sessions (id, title, created_at, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO sessions (id, title, system_prompt, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (session_id, title, now, now),
+                (session_id, title, system_prompt, now, now),
             )
 
         return session_id
@@ -102,15 +104,14 @@ class SessionStore:
         with self._connect() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO messages (
-                    session_id,
-                    role,
-                    content,
-                    name,
-                    tool_call_id,
-                    tool_calls_json,
-                    raw_json,
-                    created_at)
+                INSERT INTO messages (session_id,
+                                      role,
+                                      content,
+                                      name,
+                                      tool_call_id,
+                                      tool_calls_json,
+                                      raw_json,
+                                      created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -157,6 +158,22 @@ class SessionStore:
                 result.append(decoded)
         return result
 
+    def get_session(self, session_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                select id, title, system_prompt, created_at, updated_at
+                from sessions
+                where id = ?
+                """,
+                (session_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+
+        return dict(row)
+
     def list_sessions(self) -> list[dict[str, Any]]:
         with (self._connect() as conn):
             rows = conn.execute(
@@ -175,8 +192,18 @@ class SessionStore:
 
         return [dict(row) for row in rows]
 
+    def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str,
+                       column_definition: str) -> None:
+        """SQL迁移Helper"""
+        rows = conn.execute(f"pragma table_info({table_name})").fetchall()
+        existing_columns = {row["name"] for row in rows}
+        if column_name not in existing_columns:
+            conn.execute(
+                f"alter table {table_name} add column {column_name} {column_definition}"
+            )
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row # 让查询结果可以像字典一样按字段名读取。否则，就需要用row[0], row[1]这样取值
-        conn.execute("PRAGMA foreign_keys=ON") # 开启外键，默认不开
+        conn.row_factory = sqlite3.Row  # 让查询结果可以像字典一样按字段名读取。否则，就需要用row[0], row[1]这样取值
+        conn.execute("PRAGMA foreign_keys=ON")  # 开启外键，默认不开
         return conn
