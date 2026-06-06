@@ -164,14 +164,15 @@ assistant(final)
 
 ## Phase 4：Session Store
 
-**状态：未开始**
+**状态：已完成（最小版）**
 
 **目标：** 持久化 session 和 messages。
 
 **文件：**
 
 - Create: `src/learn_hermes_agent/state/session_db.py`
-- Modify: `src/learn_hermes_agent/agent/core.py`
+- Create: `src/learn_hermes_agent/state/__init__.py`
+- Modify: `src/learn_hermes_agent/config.py`
 - Modify: `src/learn_hermes_agent/cli/main.py`
 
 **步骤：**
@@ -188,6 +189,8 @@ assistant(final)
 **验收：**
 
 CLI 对话后 SQLite 中存在 session 和 message；重启后可读取。
+
+当前最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并提供 `sessions` / `show-session` 观察入口。暂不实现 session resume、system prompt 持久化、FTS5 search、context compression parent-child 关系或 gateway 复用。
 
 ## Phase 5：System Prompt Builder
 

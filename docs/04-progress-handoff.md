@@ -48,10 +48,22 @@
   - fake provider 脚本化响应
   - CLI `chat --tool-demo`
   - CLI `chat --show-messages`
+- Phase 4：已实现最小 SQLite session store：
+  - `sessions` / `messages` 表
+  - SQLite WAL
+  - `SessionStore.initialize()`
+  - `SessionStore.create_session()`
+  - `SessionStore.append_message()` / `append_messages()`
+  - `SessionStore.get_session_messages()`
+  - `SessionStore.list_sessions()`
+  - CLI `sessions`
+  - CLI `show-session`
+  - `chat` 后自动持久化一次性 session
 
 尚未完成：
 
-- 尚未实现 session store、system prompt builder、真实 provider、文件工具、安全审批和 gateway。
+- 尚未实现 system prompt builder、真实 provider、文件工具、安全审批和 gateway。
+- 尚未实现 session resume；当前 Phase 4 最小版只做到每次 `chat` 新建 session 并持久化消息。
 
 ## 已确认的关键设计结论
 
@@ -81,7 +93,7 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 4 开始，不要跳到 system prompt builder、真实 provider 或 gateway。
+从 Phase 5 开始，不要跳到真实 provider 或 gateway。
 
 建议步骤：
 
@@ -97,8 +109,8 @@
    - `src/learn_hermes_agent/tools/echo.py`
    - `src/learn_hermes_agent/model_tools.py`
    - `src/learn_hermes_agent/cli/main.py`
-5. 先 review Phase 3 当前代码是否仍可运行。
-6. 开始 Phase 4：实现最小 SQLite session store，先持久化 session 和 messages，不接真实 provider 或 gateway。
+5. 先 review Phase 4 当前代码是否仍可运行。
+6. 开始 Phase 5：实现最小 system prompt builder，先关注 stable/context/volatile 分层，不接真实 provider 或 gateway。
 
 ## 重要约束
 
@@ -304,6 +316,90 @@ Phase 4 边界：
 1. 先实现 SQLite `sessions` / `messages` 的最小持久化。
 2. 让 CLI 对话后可以观察到 session 和 message 记录。
 3. 暂不实现 system prompt builder、真实 provider、gateway、memory、skills 或文件工具。
+
+## 2026-06-06 Phase 4 进度更新
+
+### 本次目标
+
+完成 Phase 4：Session Store 的最小实现，让 CLI 对话消息能写入 SQLite 并在后续命令中观察。
+
+### 已完成
+
+- 新增 `SessionStore`：
+  - 初始化 SQLite `sessions` / `messages` 表
+  - 启用 WAL
+  - 创建 session
+  - 追加单条或多条 message
+  - 按 session 读取 messages
+  - 列出 sessions 和 message_count
+- 新增 `get_state_db_path()`，默认数据库路径为 `.learn_hermes/state.db`。
+- 新增 `.learn_hermes/` git ignore，避免本地运行态数据库进入提交。
+- CLI `chat` 执行后会创建一次性 session 并持久化完整 messages。
+- CLI 新增：
+  - `sessions`
+  - `show-session <session_id>`
+
+### 修改文件
+
+- `.gitignore`
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/state/__init__.py`
+- `src/learn_hermes_agent/state/session_db.py`
+- `src/learn_hermes_agent/cli/main.py`
+
+### 对照的 Hermes 源码
+
+- `hermes_state.py`
+- `agent/conversation_loop.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from learn_hermes_agent.config import get_state_db_path; from learn_hermes_agent.state.session_db import SessionStore; from learn_hermes_agent.agent.messages import user_message; store=SessionStore(get_state_db_path()); store.initialize(); sid=store.create_session(title='manual phase4 check'); store.append_message(sid, user_message('hello')); print(sid); print(store.get_session_messages(sid)); print(store.list_sessions()[0]['message_count'])"
+uv run learn-hermes-agent chat --tool-demo hello --show-messages
+uv run learn-hermes-agent sessions
+uv run learn-hermes-agent show-session <session_id>
+uv run learn-hermes-agent chat hello
+```
+
+已观察到：
+
+- `compileall` 通过。
+- 手工 `SessionStore` 验证可创建 session、写入 message、读回 message，并看到 `message_count=1`。
+- `chat --tool-demo --show-messages` 输出完整 Phase 3 消息序列并返回 `session_id`。
+- `show-session <session_id>` 可读回持久化后的：
+
+  ```text
+  user
+  assistant(tool_calls)
+  tool
+  assistant(final)
+  ```
+
+- `sessions` 可列出 session id、title、created_at、updated_at、message_count。
+- 普通 `chat hello` 保持可运行，并会输出新建的 `session_id`。
+
+### 设计结论
+
+- Phase 4 最小版采用 CLI 层持久化：`AIAgent` 不直接依赖 `SessionStore`，避免过早污染 agent core。
+- 当前每次 `chat` 创建一个新 session，不做 resume。
+- `raw_json` 保存完整 message，方便后续扩展字段。
+- `role`、`content`、`name`、`tool_call_id`、`tool_calls_json` 是为了轻量观察和查询。
+- FTS5、system prompt 持久化、session resume、compression parent-child 关系都留到后续阶段。
+
+### 下一步
+
+进入 Phase 5：System Prompt Builder。
+
+Phase 5 边界：
+
+1. 先实现 stable/context/volatile prompt 分层。
+2. 先读取本项目 `AGENTS.md` 作为 context file。
+3. 在 session store 中预留或接入 system prompt 持久化。
+4. 暂不接真实 provider、gateway、memory、skills 或 context compression。
 
 ## 后续进度模板
 
