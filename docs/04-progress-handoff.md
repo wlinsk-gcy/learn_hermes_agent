@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-06-04
+2026-06-06
 
 ## 当前状态
 
@@ -41,12 +41,16 @@
   - `handle_function_call()`
   - CLI `tools`
   - CLI `call-tool`
+- Phase 3：已实现最小工具调用对话循环：
+  - `assistant.tool_calls` 接入 `AIAgent.run_conversation()`
+  - `role=tool` 消息构造
+  - `tool_call_id` 配对
+  - fake provider 脚本化响应
+  - CLI `chat --tool-demo`
+  - CLI `chat --show-messages`
 
 尚未完成：
 
-- Phase 3：尚未把 `assistant.tool_calls` 接入 `AIAgent.run_conversation()`。
-- 尚未实现 `role=tool` 消息构造。
-- 尚未实现 tool call id 配对。
 - 尚未实现 session store、system prompt builder、真实 provider、文件工具、安全审批和 gateway。
 
 ## 已确认的关键设计结论
@@ -77,7 +81,7 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 3 开始，不要跳到 session store 或真实 provider。
+从 Phase 4 开始，不要跳到 system prompt builder、真实 provider 或 gateway。
 
 建议步骤：
 
@@ -93,8 +97,8 @@
    - `src/learn_hermes_agent/tools/echo.py`
    - `src/learn_hermes_agent/model_tools.py`
    - `src/learn_hermes_agent/cli/main.py`
-5. 先 review Phase 2 当前代码是否仍可运行。
-6. 开始 Phase 3：让 fake provider 先返回 scripted `tool_calls`，agent 执行工具后再拿 final response。
+5. 先 review Phase 3 当前代码是否仍可运行。
+6. 开始 Phase 4：实现最小 SQLite session store，先持久化 session 和 messages，不接真实 provider 或 gateway。
 
 ## 重要约束
 
@@ -212,6 +216,94 @@ uv run learn-hermes-agent call-tool missing '{}'
    - append role=`tool` result message。
    - 再次调用 provider 获取 final assistant message。
 4. 增加一个 CLI debug 命令或复用 `chat` 命令观察完整消息序列。
+
+## 2026-06-06 进度更新
+
+### 本次目标
+
+完成 Phase 3：Tool Calling Conversation Loop 的最小实现，让 `AIAgent` 能维护 OpenAI 风格工具调用消息配对。
+
+### 已完成
+
+- 扩展 `ChatMessage` helper：
+  - `assistant_message()` 支持 `content=None` 和 `tool_calls`
+  - 新增 `tool_message()`
+- 扩展 `FakeProviderTransport`：
+  - 支持 `scripted_responses`
+  - 新增 `tool_demo_provider()`
+- 扩展 `model_tools.py`：
+  - 保留 strict `handle_function_call()`
+  - 新增 `safe_handle_function_call()`，用于 agent loop 将工具错误回灌给模型
+- 扩展 `AIAgent.run_conversation()`：
+  - 循环调用 provider，最多 `max_iterations`
+  - 检测 assistant `tool_calls`
+  - append assistant tool_calls message
+  - 执行工具
+  - append `role=tool` result message
+  - 再次调用 provider 获取 final assistant message
+- 扩展 CLI：
+  - `chat --tool-demo`
+  - `chat --show-messages`
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/messages.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/providers/fake.py`
+- `src/learn_hermes_agent/model_tools.py`
+- `src/learn_hermes_agent/cli/main.py`
+
+### 对照的 Hermes 源码
+
+- `agent/conversation_loop.py`
+- `agent/tool_executor.py`
+- `agent/tool_dispatch_helpers.py`
+- `agent/chat_completion_helpers.py`
+- `model_tools.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent chat hello
+uv run learn-hermes-agent chat --tool-demo hello --show-messages
+uv run learn-hermes-agent call-tool echo '{\"text\":\"hello\"}'
+```
+
+已观察到：
+
+- `compileall` 通过。
+- 普通 `chat` 保持原 fake provider 行为。
+- `call-tool echo` 保持 Phase 2 手动分发行为。
+- `chat --tool-demo --show-messages` 输出消息序列：
+
+  ```text
+  user
+  assistant(tool_calls)
+  tool
+  assistant(final)
+  ```
+
+- `role=tool` 消息包含与 assistant tool call 相同的 `tool_call_id`。
+
+### 设计结论
+
+- Phase 3 只实现顺序工具执行，不引入并发、审批、插件 hook、真实 provider、session store 或 gateway。
+- 工具调用错误在 agent loop 中通过 `safe_handle_function_call()` 转成 JSON 字符串并作为 tool result 回灌，避免破坏消息序列。
+- `handle_function_call()` 继续保持 strict 行为，供 CLI `call-tool` debug 命令暴露错误。
+- fake provider 的 `scripted_responses` 只是模拟 provider 已规范化后的返回，不模拟真实 LLM 推理。
+
+### 下一步
+
+进入 Phase 4：Session Store。
+
+Phase 4 边界：
+
+1. 先实现 SQLite `sessions` / `messages` 的最小持久化。
+2. 让 CLI 对话后可以观察到 session 和 message 记录。
+3. 暂不实现 system prompt builder、真实 provider、gateway、memory、skills 或文件工具。
 
 ## 后续进度模板
 

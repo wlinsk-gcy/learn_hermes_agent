@@ -125,15 +125,17 @@ uv run learn-hermes-agent call-tool echo '{\"text\":\"hello\"}'
 
 ## Phase 3：Tool Calling Conversation Loop
 
-**状态：下一步**
+**状态：已完成（最小版）**
 
 **目标：** 实现 assistant tool_calls 和 role=tool result 的完整配对。
 
 **文件：**
 
 - Modify: `src/learn_hermes_agent/agent/core.py`
+- Modify: `src/learn_hermes_agent/agent/messages.py`
 - Modify: `src/learn_hermes_agent/providers/fake.py`
 - Modify: `src/learn_hermes_agent/model_tools.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
 
 **步骤：**
 
@@ -157,6 +159,8 @@ assistant(tool_calls)
 tool
 assistant(final)
 ```
+
+当前最小版通过 `chat --tool-demo --show-messages` 观察完整消息序列；真实 provider、session store、并发工具执行、审批和 gateway 留到后续阶段。
 
 ## Phase 4：Session Store
 
