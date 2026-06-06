@@ -18,6 +18,12 @@ def handle_function_call(name: str, arguments_json: str | dict[str, Any] | None 
     result = entry.handler(arguments)
     return json.dumps(result, ensure_ascii=False)
 
+def safe_handle_function_call(name: str, arguments_json: str | dict[str, Any] | None = None, *, registry: ToolRegistry | None = None) -> str:
+    try:
+        return handle_function_call(name, arguments_json, registry=registry)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
 
 def _parse_arguments(arguments_json: str | dict[str, Any] | None) -> dict[str, Any]:
     if arguments_json is None or arguments_json == "":

@@ -25,6 +25,18 @@ def system_message(content: str) -> ChatMessage:
 def user_message(content: str) -> ChatMessage:
     return {"role": "user", "content": content}
 
-def assistant_message(content: str) -> ChatMessage:
-    return {"role": "assistant", "content": content}
 
+def assistant_message(content: str | None, *, tool_calls: list[dict[str, Any]] | None = None) -> ChatMessage:
+    message: ChatMessage = {"role": "assistant", "content": content}
+    if tool_calls is not None:
+        message["tool_calls"] = tool_calls
+    return message
+
+
+def tool_message(*, name: str, content: str, tool_call_id: str) -> ChatMessage:
+    return {
+        "role": "tool",
+        "name": name,
+        "content": content,
+        "tool_call_id": tool_call_id,
+    }
