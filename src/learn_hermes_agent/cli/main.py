@@ -9,7 +9,7 @@ from learn_hermes_agent import __version__
 from learn_hermes_agent.agent.core import AIAgent
 from learn_hermes_agent.config import get_app_home, get_config_path, load_config
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
-from learn_hermes_agent.providers.fake import FakeProviderTransport
+from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +40,16 @@ def build_parser() -> argparse.ArgumentParser:
         "message",
         help="User message to send to the agent.",
     )
+    chat_parser.add_argument(
+        "--tool-demo",
+        action="store_true",
+        help="Use a fake scripted provider that calls echo before returning a final answer.",
+    )
+    chat_parser.add_argument(
+        "--show-messages",
+        action="store_true",
+        help="Print the full conversation messages as JSON.",
+    )
     # uv run learn-hermes-agent tools
     subparsers.add_parser(
         "tools",
@@ -56,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     call_tool_parser.add_argument(
         "arguments",
-        nargs="?", # 指这个位置参数可传可不传，最多传一个。如果没有nargs="?"的话，那么arguments位置就是必填的，否则会报错
+        nargs="?",  # 指这个位置参数可传可不传，最多传一个。如果没有nargs="?"的话，那么arguments位置就是必填的，否则会报错
         default="{}",
         help="Tool arguments as a JSON object.",
     )
@@ -79,17 +89,24 @@ def run_doctor() -> int:
     return 0
 
 
-def run_chat(message: str) -> int:
+def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = False) -> int:
     config = load_config()
-    provider = FakeProviderTransport(model=config["model"]["default"])
+    if tool_demo:
+        provider = tool_demo_provider(model=config['model']['default'])
+    else:
+        provider = FakeProviderTransport(model=config["model"]["default"])
     agent = AIAgent(
         provider=provider,
         max_iterations=config["agent"]["max_iterations"],
     )
 
     messages = agent.run_conversation(message)
-    final_message = messages[-1]
 
+    if show_messages:
+        print(json.dumps(messages, indent=2, ensure_ascii=False))
+        return 0
+
+    final_message = messages[-1]
     print(f"assistant: {final_message['content']}")
     return 0
 
@@ -130,7 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_doctor()
 
     if args.command == "chat":
-        return run_chat(args.message)
+        return run_chat(
+            args.message,
+            tool_demo=args.tool_demo,
+            show_messages=args.show_messages,
+        )
 
     if args.command == "tools":
         return run_tools()
