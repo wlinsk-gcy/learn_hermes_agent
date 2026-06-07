@@ -234,15 +234,22 @@ Phase 4 最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并�
 
 **步骤：**
 
-1. 建立 `CommandDef` 和 `COMMAND_REGISTRY`。
-2. 实现 `/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
-3. 支持 `config.yaml`。
-4. 支持 provider/model 配置。
-5. 更新进度文档。
+1. 对照真实 Hermes：
+   - `hermes_cli/_parser.py`
+   - `hermes_cli/main.py`
+   - `hermes_cli/commands.py`
+   - `hermes_cli/config.py`
+   - 根目录 `cli.py`
+2. 建立最小 `CommandDef` 和 `COMMAND_REGISTRY`，先作为 slash command 元数据中心。
+3. 实现 `resolve_command()` 和 `format_help_lines()`。
+4. 修改 `chat`：让 message 参数可选；无 message 时进入最小交互循环。
+5. 实现 `/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
+6. 第二批再支持 `config.yaml`，建议引入 `PyYAML`，复刻 Hermes 的 YAML 配置读取方向。
+7. 更新进度文档。
 
 **验收：**
 
-CLI 支持连续对话、切 session、查看工具。
+CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI、`prompt_toolkit`、model picker、resume by title、provider runtime resolver、gateway command。
 
 ## Phase 7：Context Compression 和 Budget
 

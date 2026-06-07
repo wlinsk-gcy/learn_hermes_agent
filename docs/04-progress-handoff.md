@@ -493,9 +493,68 @@ uv run python -c "from learn_hermes_agent.config import get_state_db_path; from 
 Phase 6 边界：
 
 1. 建立更清晰的 CLI command 分发结构。
-2. 支持最小交互式 CLI 和 slash command。
-3. 支持读取本地配置文件。
-4. 暂不接真实 provider、gateway、memory、skills 或文件工具。
+2. 对照真实 Hermes 的 `hermes_cli/commands.py`，先实现最小 `CommandDef` / `COMMAND_REGISTRY`。
+3. 对照真实 Hermes 的 `hermes_cli/_parser.py` 和 `hermes_cli/main.py`，让 `chat` 负责进入最小交互入口；不要凭空新增偏离真实项目的入口。
+4. 支持最小 slash command：`/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
+5. 下一批再支持读取本地 `config.yaml`。
+6. 暂不接真实 provider、gateway、memory、skills、TUI、prompt_toolkit、model picker 或文件工具。
+
+## 2026-06-07 Phase 6 设计校正
+
+### 本次目标
+
+在开始写 Phase 6 代码前，重新对照真实 Hermes 源码，校正 CLI/config 的复刻方向。
+
+### 已完成
+
+- 对照真实 Hermes CLI 入口：
+  - `pyproject.toml`
+  - `hermes`
+  - `hermes_cli/main.py`
+  - `hermes_cli/_parser.py`
+  - `hermes_cli/commands.py`
+  - `hermes_cli/config.py`
+  - 根目录 `cli.py`
+- 确认真实 Hermes 不是单一 CLI 文件承载所有行为，而是：
+  - `hermes_cli/main.py` 作为安装后的 `hermes` 入口
+  - `hermes_cli/_parser.py` 构建 top-level parser 和 `chat` parser
+  - 根目录 `cli.py` 承载经典 REPL 和 agent turn 执行
+  - `hermes_cli/commands.py` 维护 slash command registry
+  - `hermes_cli/config.py` 读取 `~/.hermes/config.yaml`
+
+### 修改文件
+
+本次只更新文档，不修改实现代码。
+
+### 对照的 Hermes 源码
+
+- `pyproject.toml`
+- `hermes`
+- `hermes_cli/main.py`
+- `hermes_cli/_parser.py`
+- `hermes_cli/commands.py`
+- `hermes_cli/config.py`
+- `cli.py`
+
+### 设计结论
+
+- Phase 6 不应先凭空新增一个独立 `repl` 子命令；更贴近 Hermes 的做法是让 `chat` 承担交互入口。
+- `CommandDef` / `COMMAND_REGISTRY` 是有真实源码依据的，应作为 Phase 6 第一批实现。
+- slash command registry 只描述命令元数据和解析结果；具体执行逻辑仍放在 CLI runtime 中，避免 registry 同时承担 UI、session、provider 职责。
+- `config.yaml` 是真实 Hermes 的配置面，但当前项目还没有 `PyYAML` 依赖；建议作为 Phase 6 第二批实现。
+- 暂不复刻 TUI、`prompt_toolkit`、model picker、resume by title、provider runtime resolver、gateway command。
+
+### 下一步
+
+Phase 6 Batch 1：
+
+1. 新增 `src/learn_hermes_agent/cli/commands.py`。
+2. 定义最小 `CommandDef` 和 `COMMAND_REGISTRY`。
+3. 实现 `resolve_command()` 和 `format_help_lines()`。
+4. 修改 `cli/main.py`：让 `chat` 的 `message` 变成可选。
+5. 当 `chat` 没有 message 时进入最小交互循环。
+6. 在交互循环中支持 `/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
+7. 保持 provider 为 fake，不接真实 provider。
 
 ## 后续进度模板
 
