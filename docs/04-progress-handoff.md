@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-06-06
+2026-06-07
 
 ## 当前状态
 
@@ -59,11 +59,21 @@
   - CLI `sessions`
   - CLI `show-session`
   - `chat` 后自动持久化一次性 session
+- Phase 5：已实现最小 system prompt builder：
+  - `STABLE_SYSTEM_PROMPT`
+  - `PromptLayers`
+  - `PromptBuilder`
+  - 读取本项目 `AGENTS.md` 作为 context layer
+  - 最小 prompt injection marker 扫描
+  - provider 请求临时注入 `role=system`
+  - 普通对话 messages 不返回、不持久化 system message
+  - `sessions.system_prompt` 持久化
 
 尚未完成：
 
-- 尚未实现 system prompt builder、真实 provider、文件工具、安全审批和 gateway。
-- 尚未实现 session resume；当前 Phase 4 最小版只做到每次 `chat` 新建 session 并持久化消息。
+- 尚未实现真实 provider、文件工具、安全审批和 gateway。
+- 尚未实现 session resume；当前最小版仍是每次 `chat` 新建 session 并持久化消息。
+- 尚未实现 memory、skills、context compression、system prompt cache invalidation。
 
 ## 已确认的关键设计结论
 
@@ -93,7 +103,7 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 5 开始，不要跳到真实 provider 或 gateway。
+从 Phase 6 开始，不要跳到真实 provider、gateway、memory 或 skills。
 
 建议步骤：
 
@@ -108,9 +118,12 @@
    - `src/learn_hermes_agent/tools/registry.py`
    - `src/learn_hermes_agent/tools/echo.py`
    - `src/learn_hermes_agent/model_tools.py`
+   - `src/learn_hermes_agent/agent/system_prompt.py`
+   - `src/learn_hermes_agent/agent/prompt_builder.py`
+   - `src/learn_hermes_agent/state/session_db.py`
    - `src/learn_hermes_agent/cli/main.py`
-5. 先 review Phase 4 当前代码是否仍可运行。
-6. 开始 Phase 5：实现最小 system prompt builder，先关注 stable/context/volatile 分层，不接真实 provider 或 gateway。
+5. 先 review Phase 5 当前代码是否仍可运行。
+6. 开始 Phase 6：CLI 和配置。先关注交互 CLI、slash command、配置读取，不接真实 provider 或 gateway。
 
 ## 重要约束
 
@@ -400,6 +413,89 @@ Phase 5 边界：
 2. 先读取本项目 `AGENTS.md` 作为 context file。
 3. 在 session store 中预留或接入 system prompt 持久化。
 4. 暂不接真实 provider、gateway、memory、skills 或 context compression。
+
+## 2026-06-07 Phase 5 进度更新
+
+### 本次目标
+
+完成 Phase 5：System Prompt Builder 的最小实现，让 agent 请求 provider 时携带稳定的 system prompt，并把该 prompt 持久化到 session 行。
+
+### 已完成
+
+- 新增稳定 system prompt 常量 `STABLE_SYSTEM_PROMPT`。
+- 新增 `PromptLayers`，表达 stable/context/volatile 三层 prompt。
+- 新增 `PromptBuilder`：
+  - stable layer 来自 `STABLE_SYSTEM_PROMPT`
+  - context layer 读取本项目 `AGENTS.md`
+  - volatile layer 当前保留为空
+  - 对 context file 做最小 prompt injection marker 扫描
+- 扩展 `AIAgent.run_conversation()`：
+  - 支持 `system_prompt` 参数
+  - 调 provider 前临时 prepend `role=system` message
+  - 返回的 conversation messages 仍只包含 user/assistant/tool，不包含 system message
+- 扩展 `SessionStore`：
+  - `sessions` 表增加 `system_prompt` 字段
+  - 初始化时对旧表执行轻量 schema migration
+  - `create_session()` 支持写入 system prompt
+  - `get_session()` 可读回 system prompt
+- 扩展 CLI `chat`：
+  - 每次 chat 构建 system prompt
+  - 创建 session 时保存 system prompt
+  - 持久化的 messages 不写入 system role
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/system_prompt.py`
+- `src/learn_hermes_agent/agent/prompt_builder.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/state/session_db.py`
+- `src/learn_hermes_agent/cli/main.py`
+
+### 对照的 Hermes 源码
+
+- `agent/conversation_loop.py`
+- `agent/chat_completion_helpers.py`
+- `hermes_state.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from learn_hermes_agent.agent.prompt_builder import PromptBuilder; prompt=PromptBuilder().build(); print(prompt[:80]); print('AGENTS.md' in prompt)"
+uv run learn-hermes-agent chat --tool-demo phase5-agent-check --show-messages
+uv run learn-hermes-agent show-session <session_id>
+uv run python -c "from learn_hermes_agent.config import get_state_db_path; from learn_hermes_agent.state.session_db import SessionStore; store=SessionStore(get_state_db_path()); store.initialize(); session=store.list_sessions()[0]; print(bool(store.get_session(session['id'])['system_prompt']))"
+```
+
+已观察到：
+
+- `compileall` 通过。
+- `PromptBuilder().build()` 输出包含 stable prompt，并包含 `AGENTS.md` context。
+- provider 收到的第一条 request message 是 `role=system`。
+- `AIAgent.run_conversation()` 返回的 messages 不包含 system role。
+- `show-session <session_id>` 只显示 user/assistant/tool/assistant 序列。
+- SQLite `sessions.system_prompt` 能读回非空 prompt。
+
+### 设计结论
+
+- system prompt 是 provider request layer 的输入，不是普通 conversation message。
+- session 行保存 `system_prompt`，为后续 session resume、prefix cache 和 context compression 做准备。
+- 当前只读取 `AGENTS.md`，暂不读取 `SOUL.md`、memory、skills 或用户画像。
+- 当前 prompt injection 扫描只是学习阶段的最小 marker scan，不等价于完整安全机制。
+- `volatile` layer 当前为空，后续进入 memory/skills 阶段再接入。
+
+### 下一步
+
+进入 Phase 6：CLI 和配置。
+
+Phase 6 边界：
+
+1. 建立更清晰的 CLI command 分发结构。
+2. 支持最小交互式 CLI 和 slash command。
+3. 支持读取本地配置文件。
+4. 暂不接真实 provider、gateway、memory、skills 或文件工具。
 
 ## 后续进度模板
 

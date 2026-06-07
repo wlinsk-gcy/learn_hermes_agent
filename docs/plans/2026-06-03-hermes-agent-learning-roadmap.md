@@ -190,11 +190,11 @@ assistant(final)
 
 CLI 对话后 SQLite 中存在 session 和 message；重启后可读取。
 
-当前最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并提供 `sessions` / `show-session` 观察入口。暂不实现 session resume、system prompt 持久化、FTS5 search、context compression parent-child 关系或 gateway 复用。
+Phase 4 最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并提供 `sessions` / `show-session` 观察入口。当时暂不实现 session resume、system prompt 持久化、FTS5 search、context compression parent-child 关系或 gateway 复用；system prompt 持久化已在 Phase 5 最小版接入。
 
 ## Phase 5：System Prompt Builder
 
-**状态：未开始**
+**状态：已完成（最小版）**
 
 **目标：** 实现 stable/context/volatile prompt 分层。
 
@@ -204,20 +204,21 @@ CLI 对话后 SQLite 中存在 session 和 message；重启后可读取。
 - Create: `src/learn_hermes_agent/agent/prompt_builder.py`
 - Modify: `src/learn_hermes_agent/agent/core.py`
 - Modify: `src/learn_hermes_agent/state/session_db.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
 
 **步骤：**
 
 1. 定义 stable prompt。
-2. 读取 context files：`AGENTS.md`、`SOUL.md`。
-3. 实现简单 prompt injection 扫描。
-4. 定义 volatile prompt：memory/user profile 预留。
-5. 在 session 内缓存 system prompt。
-6. 持久化 system prompt。
+2. 读取 context file：`AGENTS.md`。
+3. 实现简单 prompt injection marker 扫描。
+4. 定义 volatile prompt 预留层，当前保持为空。
+5. 在 provider request 中临时 prepend `role=system` message。
+6. 持久化 `sessions.system_prompt`。
 7. 更新进度文档。
 
 **验收：**
 
-同一 session 多轮 system prompt 字节一致；新 session 可重新构建。
+当前最小版已实现：每次 `chat` 构建 system prompt，provider request 中包含 system message，返回/持久化的普通 messages 不包含 system role，`sessions.system_prompt` 可读回。暂不实现 `SOUL.md`、memory、skills、用户画像、真实 provider、gateway、context compression 或 system prompt cache invalidation。
 
 ## Phase 6：CLI 和配置
 
