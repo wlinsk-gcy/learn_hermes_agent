@@ -11,6 +11,7 @@ from learn_hermes_agent.config import get_app_home, get_config_path, get_state_d
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 from learn_hermes_agent.state.session_db import SessionStore
+from learn_hermes_agent.agent.prompt_builder import PromptBuilder
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +94,9 @@ def get_session_store() -> SessionStore:
     store.initialize()
     return store
 
+def build_system_prompt() -> str:
+    return PromptBuilder().build()
+
 
 def run_doctor() -> int:
     config = load_config()
@@ -120,10 +124,12 @@ def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = Fal
         max_iterations=config["agent"]["max_iterations"],
     )
 
-    messages = agent.run_conversation(message)
+    system_prompt = build_system_prompt()
     store = get_session_store()
-    session_id = store.create_session(title=message[:80])
+    session_id = store.create_session(title=message[:80],system_prompt=system_prompt)
+    messages = agent.run_conversation(message,system_prompt=system_prompt)
     store.append_messages(session_id, messages)
+
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))

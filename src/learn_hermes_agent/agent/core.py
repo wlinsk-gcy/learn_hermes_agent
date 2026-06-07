@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from learn_hermes_agent.agent.messages import ChatMessage, tool_message, user_message
+from learn_hermes_agent.agent.messages import ChatMessage, system_message, tool_message, user_message
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
@@ -17,12 +17,13 @@ class AIAgent:
         self.max_iterations = max_iterations
         self.registry = registry or get_default_registry()
 
-    def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None, ) -> list[ChatMessage]:
+    def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None, system_prompt: str | None = None) -> list[ChatMessage]:
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
 
         for _ in range(self.max_iterations):
-            assistant_response = self.provider.complete(messages)
+            request_messages = self._build_request_messages(messages,system_prompt=system_prompt)
+            assistant_response = self.provider.complete(request_messages)
             self._validate_assistant_message(assistant_response)
 
             messages.append(assistant_response)
@@ -39,6 +40,13 @@ class AIAgent:
         raise RuntimeError(
             f"Exceeded max_iterations={self.max_iterations} before receiving a final assistant message."
         )
+
+    def _build_request_messages(self, messages: list[ChatMessage], *, system_prompt: str | None = None) -> list[ChatMessage]:
+        """这个helper只影响发给Provider的messages，不影响respond to user 的messages"""
+        if not system_prompt:
+            return list(messages)
+
+        return [system_message(system_prompt), *messages]
 
     def _validate_assistant_message(self, message: ChatMessage) -> None:
         if message.get("role") != "assistant":
