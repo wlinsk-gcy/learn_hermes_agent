@@ -136,6 +136,12 @@ def run_doctor() -> int:
     print(f"provider: {config['model']['provider']}")
     print(f"model: {config['model']['default']}")
     print(f"max_iterations: {config['agent']['max_iterations']}")
+    compression = config["compression"]
+    print(f"compression_enabled: {compression['enabled']}")
+    print(f"compression_context_length: {compression['context_length']}")
+    print(f"compression_threshold: {compression['threshold']}")
+    print(f"compression_protect_first_n: {compression['protect_first_n']}")
+    print(f"compression_protect_last_n: {compression['protect_last_n']}")
     return 0
 
 
@@ -153,6 +159,10 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
 
     messages = agent.run_conversation(message, system_prompt=system_prompt)
     store.append_messages(session_id, messages)
+
+    if agent.last_context_compressed:
+        print("context compressed: yes")
+
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))
@@ -249,6 +259,9 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             store.append_messages(session_id, new_messages)
 
         history = messages
+
+        if agent.last_context_compressed:
+            print("context compressed: yes")
 
         if show_messages:
             print(json.dumps(new_messages, indent=2,

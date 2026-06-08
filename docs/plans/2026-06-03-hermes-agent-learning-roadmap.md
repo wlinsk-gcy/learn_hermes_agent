@@ -255,7 +255,7 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 ## Phase 7：Context Compression 和 Budget
 
-**状态：进行中（Batch 1 核心链路已完成）**
+**状态：进行中（Batch 1 已完成）**
 
 **目标：** 控制长会话上下文，并区分 context compression budget 与 agent iteration budget。
 
@@ -297,7 +297,7 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 构造长 history 后，provider 请求前会触发压缩，返回的工作 messages 包含 summary + recent tail，并且仍能继续完成 fake 对话。当前最小版不要求看到 parent session；parent-child session chain 留到后续批次。
 
-当前 Batch 1 核心链路已完成：`ContextCompressor`、compression 配置 normalize、`AIAgent` preflight compression、`SessionStore.replace_messages()`、交互模式压缩后整体替换当前 session messages。下一步补 CLI 可观察性，让用户能明确看到本轮是否发生 context compression。
+当前 Batch 1 已完成：`ContextCompressor`、compression 配置 normalize、`AIAgent` preflight compression、`SessionStore.replace_messages()`、交互模式压缩后整体替换当前 session messages、`doctor` 输出 compression 配置、单轮和交互模式在触发压缩时输出 `context compressed: yes`。下一步进入 Batch 2：抽出 `IterationBudget`，语义只限于 agent/tool loop 最大迭代次数，不表示 context token budget。
 
 ## Phase 8：Memory 和 Skills
 

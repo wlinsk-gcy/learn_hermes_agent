@@ -851,6 +851,9 @@ Phase 7 边界：
 - 扩展 CLI：
   - `build_context_compressor()`
   - `build_agent()` 从 config 构造 compressor
+  - `doctor` 输出 compression 配置
+  - 单轮 `chat` 触发压缩时输出 `context compressed: yes`
+  - 交互模式触发压缩时输出 `context compressed: yes`
 - 扩展 `SessionStore`：
   - `replace_messages()`
 - 修复交互模式压缩后的持久化问题：
@@ -888,6 +891,9 @@ uv run learn-hermes-agent chat "phase7 integration smoke"
 uv run learn-hermes-agent chat --tool-demo "phase7 tool smoke" --show-messages
 @('hello one','hello two','/q') | uv run learn-hermes-agent chat --show-messages
 uv run python -c "<验证 compression 分支 replace_messages 后 DB 中包含 summary 和 final assistant>"
+uv run learn-hermes-agent doctor
+uv run learn-hermes-agent chat "compression visibility smoke"
+@("<多轮长输入>", '/q') | uv run learn-hermes-agent chat --show-messages
 ```
 
 已观察到：
@@ -899,24 +905,27 @@ uv run python -c "<验证 compression 分支 replace_messages 后 DB 中包含 s
 - 持久化 messages 中包含 `[Context compression summary]` 和 final assistant message。
 - 普通 `chat` 和 `chat --tool-demo --show-messages` 未被破坏。
 - 交互模式连续两轮时，未压缩路径只输出本轮新增 messages。
+- `doctor` 可观察到 compression 配置。
+- 普通短消息不触发 compression notice。
+- 低阈值临时配置的多轮长输入中可观察到 `context compressed: yes`。
 
 ### 设计结论
 
 - Batch 1 不做真实 LLM summary；summary 是 deterministic，便于学习和验证。
 - Batch 1 不做 parent-child session split；压缩后先用 `replace_messages()` 更新当前 session。
 - `AIAgent` 不直接依赖 `config.py`，由 CLI 从 config 构造 `ContextCompressor` 后注入。
-- `last_context_compressed` 是当前阶段的最小可观察状态，后续 CLI 可以据此输出 compression notice。
+- `last_context_compressed` 是当前阶段的最小可观察状态，CLI 已据此输出 compression notice。
 
 ### 下一步
 
-Phase 7 Batch 1 收尾：增加 CLI 可观察性。
+Phase 7 Batch 2：抽出 `IterationBudget`。
 
 建议先实现：
 
-1. `doctor` 输出 compression 配置。
-2. 单轮 `chat` 如果发生 compression，输出一行 `context compressed: yes`。
-3. 交互模式如果发生 compression，输出一行简短提示。
-4. 暂不增加 `/compress` 手动命令；真实 Hermes 有手动压缩入口，但当前学习项目先把自动 preflight compression 讲清楚。
+1. 新增 `src/learn_hermes_agent/agent/iteration_budget.py`。
+2. `IterationBudget` 只负责 `max_iterations` 的 consume/remaining 语义。
+3. `AIAgent.run_conversation()` 使用 `IterationBudget` 替代 `for range(max_iterations)`。
+4. 暂不接 subagent、refund、线程锁或 `execute_code` 特例；这些是真实 Hermes 的后续复杂度。
 
 ## 后续进度模板
 
