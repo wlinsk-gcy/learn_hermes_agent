@@ -765,10 +765,61 @@ uv run learn-hermes-agent chat "config check"
 
 Phase 7 边界：
 
-1. 先设计 `IterationBudget` 和粗略 token 估算。
-2. 先实现长会话预算判断，不急着实现完整摘要质量。
-3. 压缩结果先作为普通 summary/context message 或 session metadata 处理。
-4. 暂不接真实 provider、memory、skills、gateway 或完整 session resume。
+1. 先实现 `ContextCompressor` 最小版和粗略 token 估算。
+2. `ContextCompressor` 负责 context token 阈值判断和压缩。
+3. `IterationBudget` 只表示 agent/tool loop 最大迭代次数，不表示 context token budget；如需抽出，放到后续批次。
+4. 压缩结果先作为 deterministic summary message 进入 working messages。
+5. 暂不实现 parent-child session split、compression lock、真实 LLM summary、真实 provider、memory、skills、gateway 或完整 session resume。
+
+## 2026-06-08 Phase 7 设计校正
+
+### 本次目标
+
+校正 Phase 7 的设计边界，确保 context compression 方向对齐真实 Hermes，而不是把 `IterationBudget` 误当作上下文 token budget。
+
+### 已完成
+
+- 对照真实 Hermes 源码确认：
+  - `agent/context_compressor.py` 承担 context compression。
+  - `agent/conversation_loop.py` 在 provider 调用前执行 preflight compression。
+  - `agent/conversation_compression.py` 负责压缩后的 session split 和 session_id rotation。
+  - `hermes_state.py` 使用 `parent_session_id` 表示 compression continuation chain。
+  - `agent/iteration_budget.py` 只负责 agent/tool loop 迭代次数。
+  - `cli-config.yaml.example` 中真实配置区是 `compression.*`。
+- 新增设计文档：
+  - `docs/plans/2026-06-08-phase-7-context-compression-design.md`
+- 更新路线图 Phase 7，明确 Batch 1 先实现 deterministic `ContextCompressor`，不做 parent-child session split。
+
+### 修改文件
+
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-06-08-phase-7-context-compression-design.md`
+
+### 对照的 Hermes 源码
+
+- `agent/context_compressor.py`
+- `agent/conversation_loop.py`
+- `agent/conversation_compression.py`
+- `agent/iteration_budget.py`
+- `hermes_state.py`
+- `cli-config.yaml.example`
+
+### 设计结论
+
+- Phase 7 Batch 1 先做 preflight context compression。
+- `ContextCompressor` 负责粗略 token 估算、阈值判断、head/tail 保护和 middle summary。
+- 当前学习项目先使用 deterministic summary，不调用真实 LLM。
+- 压缩后的 working messages 会继续进入 provider 和 CLI 持久化，避免下一轮重复携带被压缩的中间窗口。
+- `parent_session_id` 和 compression session split 是真实 Hermes 设计，但放到后续批次。
+
+### 下一步
+
+开始 Phase 7 Batch 1，实现：
+
+1. `src/learn_hermes_agent/agent/context_compressor.py`
+2. `config.py` 新增 `compression` 配置读取和 normalize。
+3. `AIAgent.run_conversation()` provider 调用前执行 preflight compression。
 
 ## 后续进度模板
 

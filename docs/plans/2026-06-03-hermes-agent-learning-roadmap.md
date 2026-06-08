@@ -257,27 +257,45 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 **状态：未开始**
 
-**目标：** 控制长会话上下文。
+**目标：** 控制长会话上下文，并区分 context compression budget 与 agent iteration budget。
 
 **文件：**
 
-- Create: `src/learn_hermes_agent/agent/iteration_budget.py`
 - Create: `src/learn_hermes_agent/agent/context_compressor.py`
 - Modify: `src/learn_hermes_agent/agent/core.py`
-- Modify: `src/learn_hermes_agent/state/session_db.py`
+- Modify: `src/learn_hermes_agent/config.py`
+- Later: `src/learn_hermes_agent/agent/iteration_budget.py`
+- Later: `src/learn_hermes_agent/state/session_db.py`
 
 **步骤：**
 
-1. 实现 `IterationBudget`。
-2. 实现粗略 token 估算。
-3. 达到阈值时触发摘要压缩。
-4. 创建 parent-child session 关系。
-5. compression 后 invalid system prompt cache。
-6. 更新进度文档。
+1. 对照真实 Hermes：
+   - `agent/context_compressor.py`
+   - `agent/conversation_compression.py`
+   - `agent/conversation_loop.py`
+   - `agent/iteration_budget.py`
+   - `hermes_state.py`
+   - `cli-config.yaml.example`
+2. 先实现 `ContextCompressor` 最小版：
+   - 粗略 token 估算。
+   - `should_compress()` 阈值判断。
+   - 保护 head messages。
+   - 保护 tail messages。
+   - 将 middle messages 压成 deterministic summary。
+3. 在 `AIAgent.run_conversation()` 的 provider 调用前做 preflight compression。
+4. 在 `config.py` 中新增最小 `compression` 配置：
+   - `enabled`
+   - `context_length`
+   - `threshold`
+   - `protect_first_n`
+   - `protect_last_n`
+5. 暂不实现真实 LLM summary、auxiliary compression model、post-response real usage 更新、compression session split、compression lock、memory/provider hooks。
+6. 后续再单独实现 `IterationBudget`，其语义是 agent/tool loop 最大迭代次数，不是 context token budget。
+7. 更新进度文档。
 
 **验收：**
 
-长会话触发压缩后仍能继续对话，并能看到 parent session。
+构造长 history 后，provider 请求前会触发压缩，返回的工作 messages 包含 summary + recent tail，并且仍能继续完成 fake 对话。当前最小版不要求看到 parent session；parent-child session chain 留到后续批次。
 
 ## Phase 8：Memory 和 Skills
 
