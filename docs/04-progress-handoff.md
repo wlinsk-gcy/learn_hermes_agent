@@ -821,6 +821,103 @@ Phase 7 边界：
 2. `config.py` 新增 `compression` 配置读取和 normalize。
 3. `AIAgent.run_conversation()` provider 调用前执行 preflight compression。
 
+## 2026-06-08 Phase 7 Batch 1 进度更新
+
+### 本次目标
+
+实现最小 deterministic context compression，并接入 `AIAgent` 的 provider 调用前 preflight compression。
+
+### 已完成
+
+- 新增 `src/learn_hermes_agent/agent/context_compressor.py`：
+  - `CompressionConfig`
+  - `ContextCompressor`
+  - `estimate_request_tokens_rough()`
+  - `estimate_message_tokens_rough()`
+  - `estimate_text_tokens_rough()`
+  - deterministic summary message 构造
+- 扩展 `config.py`：
+  - `DEFAULT_CONFIG["compression"]`
+  - `compression.enabled`
+  - `compression.context_length`
+  - `compression.threshold`
+  - `compression.protect_first_n`
+  - `compression.protect_last_n`
+  - 非法 compression 配置回退默认值
+- 扩展 `AIAgent`：
+  - 构造时接收 `ContextCompressor`
+  - `last_context_compressed`
+  - provider 调用前执行 `context_compressor.compress()`
+- 扩展 CLI：
+  - `build_context_compressor()`
+  - `build_agent()` 从 config 构造 compressor
+- 扩展 `SessionStore`：
+  - `replace_messages()`
+- 修复交互模式压缩后的持久化问题：
+  - 未压缩时 append 本轮新增 messages
+  - 压缩时 replace 当前 session messages
+  - 每轮统一更新 `history = messages`
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/context_compressor.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `src/learn_hermes_agent/state/session_db.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `agent/context_compressor.py`
+- `agent/conversation_loop.py`
+- `agent/conversation_compression.py`
+- `hermes_state.py`
+- `cli-config.yaml.example`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from learn_hermes_agent.config import load_config; from learn_hermes_agent.cli.main import build_agent; agent=build_agent(load_config()); print(agent.context_compressor.config); print(agent.last_context_compressed)"
+uv run python -c "<构造长 history，低 context_length 触发 AIAgent preflight compression>"
+uv run learn-hermes-agent chat "phase7 integration smoke"
+uv run learn-hermes-agent chat --tool-demo "phase7 tool smoke" --show-messages
+@('hello one','hello two','/q') | uv run learn-hermes-agent chat --show-messages
+uv run python -c "<验证 compression 分支 replace_messages 后 DB 中包含 summary 和 final assistant>"
+```
+
+已观察到：
+
+- `compileall` 通过。
+- `build_agent()` 能构造 `CompressionConfig(enabled=True, context_length=2000, threshold=0.5, protect_first_n=2, protect_last_n=6)`。
+- 长 history 低阈值用例中 `agent.last_context_compressed=True`。
+- 16 条 history 经压缩后可持久化为 8 条 working messages。
+- 持久化 messages 中包含 `[Context compression summary]` 和 final assistant message。
+- 普通 `chat` 和 `chat --tool-demo --show-messages` 未被破坏。
+- 交互模式连续两轮时，未压缩路径只输出本轮新增 messages。
+
+### 设计结论
+
+- Batch 1 不做真实 LLM summary；summary 是 deterministic，便于学习和验证。
+- Batch 1 不做 parent-child session split；压缩后先用 `replace_messages()` 更新当前 session。
+- `AIAgent` 不直接依赖 `config.py`，由 CLI 从 config 构造 `ContextCompressor` 后注入。
+- `last_context_compressed` 是当前阶段的最小可观察状态，后续 CLI 可以据此输出 compression notice。
+
+### 下一步
+
+Phase 7 Batch 1 收尾：增加 CLI 可观察性。
+
+建议先实现：
+
+1. `doctor` 输出 compression 配置。
+2. 单轮 `chat` 如果发生 compression，输出一行 `context compressed: yes`。
+3. 交互模式如果发生 compression，输出一行简短提示。
+4. 暂不增加 `/compress` 手动命令；真实 Hermes 有手动压缩入口，但当前学习项目先把自动 preflight compression 讲清楚。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：
