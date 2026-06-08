@@ -7,6 +7,8 @@ import sys
 
 from learn_hermes_agent import __version__
 from learn_hermes_agent.agent.core import AIAgent
+from learn_hermes_agent.agent.messages import ChatMessage
+from learn_hermes_agent.cli.commands import format_help_lines, parse_slash_command
 from learn_hermes_agent.config import get_app_home, get_config_path, get_state_db_path, load_config
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
@@ -40,7 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     chat_parser.add_argument(
         "message",
-        help="User message to send to the agent.",
+        nargs="?",
+        help="User message to send to the agent. If omitted, starts interactive chat.",
     )
     chat_parser.add_argument(
         "--tool-demo",
@@ -94,8 +97,18 @@ def get_session_store() -> SessionStore:
     store.initialize()
     return store
 
+
 def build_system_prompt() -> str:
     return PromptBuilder().build()
+
+
+def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
+    if tool_demo:
+        provider = tool_demo_provider(model=config["model"]["default"])
+    else:
+        provider = FakeProviderTransport(model=config["model"]["default"])
+
+    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"])
 
 
 def run_doctor() -> int:
@@ -114,22 +127,19 @@ def run_doctor() -> int:
 
 
 def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = False) -> int:
+    if message is None:
+        return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages)
+
     config = load_config()
-    if tool_demo:
-        provider = tool_demo_provider(model=config['model']['default'])
-    else:
-        provider = FakeProviderTransport(model=config["model"]["default"])
-    agent = AIAgent(
-        provider=provider,
-        max_iterations=config["agent"]["max_iterations"],
-    )
+    agent = build_agent(config, tool_demo=tool_demo)
+
 
     system_prompt = build_system_prompt()
     store = get_session_store()
-    session_id = store.create_session(title=message[:80],system_prompt=system_prompt)
-    messages = agent.run_conversation(message,system_prompt=system_prompt)
-    store.append_messages(session_id, messages)
+    session_id = store.create_session(title=message[:80], system_prompt=system_prompt)
 
+    messages = agent.run_conversation(message, system_prompt=system_prompt)
+    store.append_messages(session_id, messages)
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))
@@ -140,6 +150,90 @@ def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = Fal
     print(f"assistant: {final_message['content']}")
     print(f"session_id: {session_id}")
     return 0
+
+
+def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False) -> int:
+    """启动连续对话"""
+    config = load_config()
+    store = get_session_store()
+
+    system_prompt = build_system_prompt()
+    session_id = store.create_session(title="interactive chat", system_prompt=system_prompt)
+    agent = build_agent(config, tool_demo=tool_demo)
+    history: list[ChatMessage] = []
+
+    print("learn-hermes-agent interactive chat")
+    print("Type /help for commands, /exit to quit.")
+    print(f"session_id: {session_id}")
+
+    while True:
+        try:
+            user_input = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+
+        if not user_input:
+            continue
+
+        if user_input.startswith("/"):
+            command, raw_name, command_args = parse_slash_command(user_input)
+
+            if command is None:
+                print("error: empty command")
+                continue
+
+            if command.name == "help":
+                print("\n".join(format_help_lines()))
+                continue
+
+            if command.name == "exit":
+                return 0
+
+            if command.name == "new":
+                title = command_args or "interactive chat"
+                system_prompt = build_system_prompt()
+                session_id = store.create_session(title=title, system_prompt=system_prompt)
+                agent = build_agent(config, tool_demo=tool_demo)
+                history = []
+                print(f"session_id: {session_id}")
+                continue
+
+            if command.name == "model":
+                print(f"provider: {config['model']['provider']}")
+                print(f"model: {config['model']['default']}")
+                continue
+
+            if command.name == "tools":
+                print(json.dumps(get_tool_definitions(), indent=2, ensure_ascii=False))
+                continue
+
+            if command.name == "sessions":
+                print(json.dumps(store.list_sessions(), indent=2, ensure_ascii=False))
+                continue
+
+            print(f"unknown command: /{raw_name}")
+            print("Type /help for available commands.")
+            continue
+
+        before_count = len(history)
+        messages = agent.run_conversation(
+            user_input,
+            history=history,
+            system_prompt=system_prompt,
+        )
+        new_messages = messages[before_count:]
+        store.append_messages(session_id, new_messages)
+        history = messages
+
+        if show_messages:
+            print(json.dumps(new_messages, indent=2,
+                             ensure_ascii=False))
+
+        final_message = messages[-1]
+        print(f"assistant: {final_message['content']}")
+
+
 
 
 def run_tools() -> int:
