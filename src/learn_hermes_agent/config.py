@@ -18,6 +18,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # 最大可迭代次数
         "max_iterations": 10,
     },
+    "compression": {
+        "enabled": True,
+        "context_length": 2000,
+        "threshold": 0.5,
+        "protect_first_n": 2,
+        "protect_last_n": 6,
+    }
 }
 
 
@@ -40,6 +47,7 @@ def get_config_path() -> Path:
 
 def get_state_db_path() -> Path:
     return get_app_home() / "state.db"
+
 
 def read_raw_config() -> dict[str, Any]:
     config_path = get_config_path()
@@ -67,7 +75,6 @@ def read_raw_config() -> dict[str, Any]:
     return data
 
 
-
 def load_config() -> dict[str, Any]:
     config = copy.deepcopy(DEFAULT_CONFIG)
     user_config = read_raw_config()
@@ -85,6 +92,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
             result[key] = copy.deepcopy(value)
 
     return result
+
 
 def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     model_config = config.get("model")
@@ -110,6 +118,41 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
 
     config["agent"] = {
         "max_iterations": max_iterations,
+    }
+
+    compression_config = config.get("compression")
+    if not isinstance(compression_config, dict):
+        compression_config = {}
+
+    default_compression_config = DEFAULT_CONFIG["compression"]
+
+    enabled = compression_config.get("enabled")
+    context_length = compression_config.get("context_length")
+    threshold = compression_config.get("threshold")
+    protect_first_n = compression_config.get("protect_first_n")
+    protect_last_n = compression_config.get("protect_last_n")
+
+    if not isinstance(enabled, bool):
+        enabled = default_compression_config["enabled"]
+
+    if not isinstance(context_length, int) or context_length <= 0:
+        context_length = default_compression_config["context_length"]
+
+    if not isinstance(threshold, (int, float)) or threshold <= 0 or threshold > 1:
+        threshold = default_compression_config["threshold"]
+
+    if not isinstance(protect_first_n, int) or protect_first_n < 0:
+        protect_first_n = default_compression_config["protect_first_n"]
+
+    if not isinstance(protect_last_n, int) or protect_last_n < 0:
+        protect_last_n = default_compression_config["protect_last_n"]
+
+    config["compression"] = {
+        "enabled": enabled,
+        "context_length": context_length,
+        "threshold": float(threshold),
+        "protect_first_n": protect_first_n,
+        "protect_last_n": protect_last_n,
     }
 
     return config
