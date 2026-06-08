@@ -17,9 +17,9 @@ class CommandDef:
 COMMAND_REGISTRY: tuple[CommandDef, ...] = (
     CommandDef("help", "Show available commands.", "Info", aliases=("commands",)),
     CommandDef("new", "Start a new chat session.", "Session", aliases=("reset",), args_hint="[title]"),
+    CommandDef("sessions", "List persisted chat sessions.", "Session"),
     CommandDef("model", "Show the active provider and model.", "Configuration"),
     CommandDef("tools", "List available tools.", "Tools"),
-    CommandDef("sessions", "List persisted chat sessions.", "Session"),
     CommandDef("exit", "Exit interactive chat.", "Exit", aliases=("quit", "q")),
 )
 

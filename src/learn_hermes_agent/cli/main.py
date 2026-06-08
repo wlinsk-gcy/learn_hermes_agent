@@ -126,7 +126,7 @@ def run_doctor() -> int:
     return 0
 
 
-def run_chat(message: str, *, tool_demo: bool = False, show_messages: bool = False) -> int:
+def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: bool = False) -> int:
     if message is None:
         return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages)
 
@@ -180,7 +180,11 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             command, raw_name, command_args = parse_slash_command(user_input)
 
             if command is None:
-                print("error: empty command")
+                if raw_name:
+                    print(f"unknown command: /{raw_name}")
+                    print("Type /help for available commands.")
+                else:
+                    print("error: empty command")
                 continue
 
             if command.name == "help":
@@ -199,6 +203,10 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                 print(f"session_id: {session_id}")
                 continue
 
+            if command.name == "sessions":
+                print(json.dumps(store.list_sessions(), indent=2, ensure_ascii=False))
+                continue
+
             if command.name == "model":
                 print(f"provider: {config['model']['provider']}")
                 print(f"model: {config['model']['default']}")
@@ -208,13 +216,9 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                 print(json.dumps(get_tool_definitions(), indent=2, ensure_ascii=False))
                 continue
 
-            if command.name == "sessions":
-                print(json.dumps(store.list_sessions(), indent=2, ensure_ascii=False))
-                continue
-
-            print(f"unknown command: /{raw_name}")
-            print("Type /help for available commands.")
+            print(f"command not implemented: /{command.name}")
             continue
+
 
         before_count = len(history)
         messages = agent.run_conversation(

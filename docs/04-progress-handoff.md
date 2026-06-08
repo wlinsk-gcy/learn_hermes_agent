@@ -68,12 +68,27 @@
   - provider 请求临时注入 `role=system`
   - 普通对话 messages 不返回、不持久化 system message
   - `sessions.system_prompt` 持久化
+- Phase 6 Batch 1：已实现最小交互 CLI 和 slash command registry：
+  - `CommandDef`
+  - `COMMAND_REGISTRY`
+  - `resolve_command()`
+  - `parse_slash_command()`
+  - `format_help_lines()`
+  - `chat` message 参数可选
+  - `chat` 无 message 时进入最小交互循环
+  - `/help`
+  - `/new`
+  - `/model`
+  - `/tools`
+  - `/sessions`
+  - `/exit` 及别名
 
 尚未完成：
 
 - 尚未实现真实 provider、文件工具、安全审批和 gateway。
 - 尚未实现 session resume；当前最小版仍是每次 `chat` 新建 session 并持久化消息。
 - 尚未实现 memory、skills、context compression、system prompt cache invalidation。
+- Phase 6 尚未完成 `config.yaml` 读取、provider/model 配置覆盖和配置写入命令。
 
 ## 已确认的关键设计结论
 
@@ -103,7 +118,7 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 6 开始，不要跳到真实 provider、gateway、memory 或 skills。
+从 Phase 6 Batch 2 开始，不要跳到真实 provider、gateway、memory 或 skills。
 
 建议步骤：
 
@@ -123,7 +138,7 @@
    - `src/learn_hermes_agent/state/session_db.py`
    - `src/learn_hermes_agent/cli/main.py`
 5. 先 review Phase 5 当前代码是否仍可运行。
-6. 开始 Phase 6：CLI 和配置。先关注交互 CLI、slash command、配置读取，不接真实 provider 或 gateway。
+6. 开始 Phase 6 Batch 2：`config.yaml` 最小读取和配置覆盖，不接真实 provider 或 gateway。
 
 ## 重要约束
 
@@ -555,6 +570,101 @@ Phase 6 Batch 1：
 5. 当 `chat` 没有 message 时进入最小交互循环。
 6. 在交互循环中支持 `/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。
 7. 保持 provider 为 fake，不接真实 provider。
+
+## 2026-06-08 Phase 6 Batch 1 进度更新
+
+### 本次目标
+
+完成 Phase 6 第一批：复刻真实 Hermes 的 slash command registry 方向，并让 `chat` 无 message 时进入最小交互循环。
+
+### 已完成
+
+- 新增 `src/learn_hermes_agent/cli/commands.py`：
+  - `CommandDef`
+  - `COMMAND_REGISTRY`
+  - `resolve_command()`
+  - `parse_slash_command()`
+  - `format_help_lines()`
+- 扩展 `src/learn_hermes_agent/cli/main.py`：
+  - `chat` 的 `message` 参数改为可选
+  - 新增 `build_agent()`
+  - 新增 `run_interactive_chat()`
+  - 支持连续对话 history
+  - 每轮只持久化新增 messages，避免重复写入历史
+  - `/new` 创建新 session 并清空 history
+  - `/help` 输出 registry 生成的帮助文本
+  - `/model` 显示当前 fake provider/model
+  - `/tools` 显示工具 schema
+  - `/sessions` 显示 session 列表
+  - `/exit`、`/quit`、`/q` 退出交互
+  - 未知 slash command 输出 `unknown command`
+  - 已注册但未实现的 slash command 有兜底提示
+
+### 修改文件
+
+- `src/learn_hermes_agent/cli/commands.py`
+- `src/learn_hermes_agent/cli/main.py`
+
+### 对照的 Hermes 源码
+
+- `hermes_cli/commands.py`
+- `hermes_cli/_parser.py`
+- `hermes_cli/main.py`
+- 根目录 `cli.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent chat "phase6 smoke"
+@(
+'/help'
+'/abc'
+'hello batch1'
+'/new phase6 batch1'
+'hello after new'
+'/model'
+'/tools'
+'/sessions'
+'/q'
+) | uv run learn-hermes-agent chat
+```
+
+已观察到：
+
+- `compileall` 通过。
+- 普通单轮 `chat "phase6 smoke"` 保持可运行。
+- `/help` 输出命令分组，`Session` 分类不重复分裂。
+- `/abc` 输出未知命令提示。
+- 普通消息进入 agent 并返回 fake assistant 响应。
+- `/new phase6 batch1` 创建新 session。
+- `/model` 输出 `provider: fake` 和 `model: fake-basic`。
+- `/tools` 输出当前 `echo` tool schema。
+- `/sessions` 可观察交互 session 和 message count。
+- `/q` 作为 `/exit` 别名正常退出。
+
+### 设计结论
+
+- `commands.py` 只做 slash command 元数据和解析，不承担执行逻辑。
+- `main.py` 的交互循环负责执行命令，符合当前学习项目的最小边界。
+- `chat` 无 message 进入交互循环，比新增独立 `repl` 子命令更贴近真实 Hermes 的入口方向。
+- 当前交互模式使用 `input()`，不引入 `prompt_toolkit`。
+- 当前 provider 仍然是 fake，不做真实 provider runtime resolver。
+
+### 下一步
+
+进入 Phase 6 Batch 2：`config.yaml` 最小读取。
+
+Batch 2 边界：
+
+1. 引入 `PyYAML` 或明确选择一个临时无依赖方案。
+2. 读取 `.learn_hermes/config.yaml`。
+3. 与 `DEFAULT_CONFIG` 做深合并。
+4. 支持覆盖 `model.provider`、`model.default`、`agent.max_iterations`。
+5. 配置解析失败时给出清晰 stderr 提示，并回退默认配置。
+6. 暂不实现 `config set`、`config edit`、真实 provider 或 credential 管理。
 
 ## 后续进度模板
 

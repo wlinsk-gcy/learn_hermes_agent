@@ -222,7 +222,7 @@ Phase 4 最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并�
 
 ## Phase 6：CLI 和配置
 
-**状态：未开始**
+**状态：进行中（Batch 1 已完成）**
 
 **目标：** 形成可日常使用的交互 CLI。
 
@@ -250,6 +250,8 @@ Phase 4 最小版通过 CLI 层持久化每次 `chat` 的完整 messages，并�
 **验收：**
 
 CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI、`prompt_toolkit`、model picker、resume by title、provider runtime resolver、gateway command。
+
+当前 Batch 1 已完成：`CommandDef` / `COMMAND_REGISTRY`、slash command 解析、`chat` 无 message 进入最小交互循环、`/help`、`/new`、`/model`、`/tools`、`/sessions`、`/exit`。Batch 2 继续实现 `config.yaml` 最小读取和默认配置合并。
 
 ## Phase 7：Context Compression 和 Budget
 
