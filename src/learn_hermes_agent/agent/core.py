@@ -5,6 +5,7 @@ from typing import Any
 
 from learn_hermes_agent.agent.messages import ChatMessage, system_message, tool_message, user_message
 from learn_hermes_agent.agent.context_compressor import ContextCompressor
+from learn_hermes_agent.agent.iteration_budget import IterationBudget
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
@@ -19,13 +20,15 @@ class AIAgent:
         self.registry = registry or get_default_registry()
         self.context_compressor = context_compressor or ContextCompressor()
         self.last_context_compressed = False
+        self.iteration_budget = IterationBudget(max_iterations)
 
     def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None, system_prompt: str | None = None) -> list[ChatMessage]:
         self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
 
-        for _ in range(self.max_iterations):
+        self.iteration_budget = IterationBudget(self.max_iterations)
+        while self.iteration_budget.consume():
             before_compression_count = len(messages)
             messages = self.context_compressor.compress(messages, system_prompt=system_prompt)
             if len(messages) < before_compression_count:
@@ -46,7 +49,7 @@ class AIAgent:
                 messages.append(tool_message(name=function_name, content=result_json, tool_call_id=tool_call_id))
 
         raise RuntimeError(
-            f"Exceeded max_iterations={self.max_iterations} before receiving a final assistant message."
+            f"Exceeded max_iterations={self.iteration_budget.max_total} before receiving a final assistant message."
         )
 
     def _build_request_messages(self, messages: list[ChatMessage], *, system_prompt: str | None = None) -> list[ChatMessage]:

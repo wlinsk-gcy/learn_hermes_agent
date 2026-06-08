@@ -927,6 +927,90 @@ Phase 7 Batch 2：抽出 `IterationBudget`。
 3. `AIAgent.run_conversation()` 使用 `IterationBudget` 替代 `for range(max_iterations)`。
 4. 暂不接 subagent、refund、线程锁或 `execute_code` 特例；这些是真实 Hermes 的后续复杂度。
 
+## 2026-06-08 Phase 7 Batch 2 进度更新
+
+### 本次目标
+
+抽出 `IterationBudget`，让 `max_iterations` 的语义从裸 `for range(...)` 变成可观察的 agent loop budget。
+
+### 已完成
+
+- 新增 `src/learn_hermes_agent/agent/iteration_budget.py`：
+  - `IterationBudget`
+  - `consume()`
+  - `used`
+  - `remaining`
+- 扩展 `AIAgent`：
+  - 构造时初始化 `self.iteration_budget`
+  - 每次 `run_conversation()` 开始时重建本轮 budget
+  - 使用 `while self.iteration_budget.consume()` 替代 `for range(self.max_iterations)`
+  - 预算耗尽时抛出 `Exceeded max_iterations=...`
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/iteration_budget.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `agent/iteration_budget.py`
+- `agent/conversation_loop.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from learn_hermes_agent.agent.iteration_budget import IterationBudget; b=IterationBudget(2); print(b.remaining); print(b.consume()); print(b.consume()); print(b.consume()); print(b.used); print(b.remaining)"
+uv run learn-hermes-agent chat --tool-demo "budget smoke" --show-messages
+uv run python -c "from learn_hermes_agent.agent.core import AIAgent; from learn_hermes_agent.providers.fake import tool_demo_provider; agent=AIAgent(tool_demo_provider(), max_iterations=1); agent.run_conversation('needs two provider calls')"
+```
+
+已观察到：
+
+- `compileall` 通过。
+- `IterationBudget(2)` 输出：
+
+  ```text
+  2
+  True
+  True
+  False
+  2
+  0
+  ```
+
+- `chat --tool-demo` 仍能完成 `user -> assistant(tool_calls) -> tool -> assistant(final)`。
+- `max_iterations=1` 且 tool demo 需要两次 provider call 时，会抛出：
+
+  ```text
+  RuntimeError: Exceeded max_iterations=1 before receiving a final assistant message.
+  ```
+
+### 设计结论
+
+- `IterationBudget` 只管 agent/provider/tool loop 的迭代次数。
+- `IterationBudget` 不参与 context token 估算，也不决定 compression threshold。
+- 当前学习项目暂不实现真实 Hermes 里的线程锁、`refund()`、subagent 独立 budget 或 `execute_code` 特例。
+
+### 下一步
+
+Phase 7 Batch 3：设计最小 compression session split。
+
+建议先做设计，不直接写代码：
+
+1. 对照真实 Hermes 的 `conversation_compression.py` 和 `hermes_state.py`。
+2. 评估是否在当前学习项目中新增：
+   - `sessions.parent_session_id`
+   - `sessions.end_reason`
+   - `SessionStore.end_session()`
+   - `SessionStore.create_session(parent_session_id=...)`
+3. 决定压缩时继续使用当前 session replace，还是切到 child session。
+4. 暂不实现 compression lock、gateway session projection、memory hooks 或完整 resume。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：
