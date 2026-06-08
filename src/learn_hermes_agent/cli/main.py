@@ -250,9 +250,18 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             system_prompt=system_prompt,
         )
         if agent.last_context_compressed:
-            # 触发压缩时，当前 session 的消息整体替换成压缩后的 working messages，避免旧消息重复或切片为空。
-            store.replace_messages(session_id, messages)
+            # 触发压缩时，结束当前session并创建子session进行延续
+            old_session_id = session_id
+            store.end_session(old_session_id, "compression")
+            session_id = store.create_session(
+                title="compressed continuation",
+                system_prompt=system_prompt,
+                parent_session_id=old_session_id,
+            )
+            store.append_messages(session_id, messages)
             new_messages = messages
+            print(f"session_id: {session_id}")
+
         else:
             # 没压缩的时候，直接追加messages即可
             new_messages = messages[before_count:]

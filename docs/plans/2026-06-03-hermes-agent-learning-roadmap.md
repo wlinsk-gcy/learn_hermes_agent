@@ -255,7 +255,7 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 ## Phase 7：Context Compression 和 Budget
 
-**状态：进行中（Batch 1-2 已完成）**
+**状态：进行中（Batch 1-3 已完成）**
 
 **目标：** 控制长会话上下文，并区分 context compression budget 与 agent iteration budget。
 
@@ -299,7 +299,9 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 当前 Batch 1 已完成：`ContextCompressor`、compression 配置 normalize、`AIAgent` preflight compression、`SessionStore.replace_messages()`、交互模式压缩后整体替换当前 session messages、`doctor` 输出 compression 配置、单轮和交互模式在触发压缩时输出 `context compressed: yes`。
 
-当前 Batch 2 已完成：抽出 `IterationBudget`，并让 `AIAgent.run_conversation()` 使用 `IterationBudget.consume()` 控制 provider/tool loop 次数。该 budget 只表示 agent loop 迭代次数，不表示 context token budget。下一步进入 Batch 3：设计最小 compression session split。
+当前 Batch 2 已完成：抽出 `IterationBudget`，并让 `AIAgent.run_conversation()` 使用 `IterationBudget.consume()` 控制 provider/tool loop 次数。该 budget 只表示 agent loop 迭代次数，不表示 context token budget。
+
+当前 Batch 3 已完成：`SessionStore` 增加 `parent_session_id`、`end_reason`、`ended_at`；`create_session()` 支持 parent session；新增 `end_session()`；交互模式触发 compression 时结束旧 session、创建 child session，并把 compressed working messages 写入 child session。暂不实现 compression lock、gateway projection、resume tip、memory hooks 或真实 provider usage。
 
 ## Phase 8：Memory 和 Skills
 

@@ -1011,6 +1011,74 @@ Phase 7 Batch 3：设计最小 compression session split。
 3. 决定压缩时继续使用当前 session replace，还是切到 child session。
 4. 暂不实现 compression lock、gateway session projection、memory hooks 或完整 resume。
 
+## 2026-06-09 Phase 7 Batch 3 进度更新
+
+### 本次目标
+
+实现最小 compression session split：压缩发生后不再覆盖旧 session，而是结束旧 session、创建 child session，并用 `parent_session_id` 保留 lineage。
+
+### 已完成
+
+- 扩展 `sessions` schema：
+  - `parent_session_id`
+  - `end_reason`
+  - `ended_at`
+- 初始化时为旧数据库补齐新增列，并创建 `parent_session_id` index。
+- 扩展 `SessionStore.create_session()`，支持 `parent_session_id`。
+- 新增 `SessionStore.end_session(session_id, reason)`。
+- `get_session()` 和 `list_sessions()` 返回 parent/end 相关字段。
+- 交互模式触发 compression 时：
+  - 结束旧 session，`end_reason="compression"`。
+  - 创建 child session，继承 `system_prompt`。
+  - 写入 compressed working messages。
+  - 更新当前 `session_id` 并输出新 session id。
+
+### 修改文件
+
+- `src/learn_hermes_agent/state/session_db.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `agent/conversation_compression.py`
+- `hermes_state.py`
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+@("one <long>", "two <long>", "three <long>", "/sessions", "/q") | uv run learn-hermes-agent chat
+```
+
+已观察到：
+
+- `compileall` 通过。
+- 第三轮长输入触发 `context compressed: yes`。
+- CLI 输出新的 child `session_id`。
+- `/sessions` 中 parent session 的 `end_reason` 为 `compression`。
+- child session 的 `parent_session_id` 指向 parent session。
+- parent 保留压缩前 messages，child 保存 compressed working messages。
+
+### 设计结论
+
+- Batch 3 对齐真实 Hermes 的 session lineage 方向：compression 是 session 边界，不是简单删除或覆盖旧历史。
+- 当前只在 CLI 交互模式里做 session split；单轮 `chat` 和非压缩路径继续保持原行为。
+- 暂不实现 compression lock、gateway session projection、resume tip、memory hooks、system prompt rebuild 或真实 provider usage。
+
+### 下一步
+
+进入 Phase 7 Batch 4：收尾 Phase 7 的可观察性和边界整理。
+
+建议先做：
+
+1. 检查 `sessions` 输出字段是否足够清晰，必要时微调排序或显示。
+2. 整理 Phase 7 当前剩余项：compression lock 是否继续后延，还是实现一个最小 no-op 保护接口。
+3. 明确 Phase 8 是否开始 memory/skills，还是先做 session resume 的最小入口。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：
