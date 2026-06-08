@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-06-07
+2026-06-08
 
 ## 当前状态
 
@@ -82,13 +82,21 @@
   - `/tools`
   - `/sessions`
   - `/exit` 及别名
+- Phase 6 Batch 2：已实现最小 `config.yaml` 读取和默认配置合并：
+  - 引入 `PyYAML`
+  - 读取 `.learn_hermes/config.yaml`
+  - 与 `DEFAULT_CONFIG` 深合并
+  - 支持 `model.provider`
+  - 支持 `model.default`
+  - 支持 `agent.max_iterations`
+  - 非法 YAML 或非 object 配置会输出 stderr warning 并回退默认配置
 
 尚未完成：
 
 - 尚未实现真实 provider、文件工具、安全审批和 gateway。
 - 尚未实现 session resume；当前最小版仍是每次 `chat` 新建 session 并持久化消息。
 - 尚未实现 memory、skills、context compression、system prompt cache invalidation。
-- Phase 6 尚未完成 `config.yaml` 读取、provider/model 配置覆盖和配置写入命令。
+- 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
 
@@ -118,7 +126,7 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 6 Batch 2 开始，不要跳到真实 provider、gateway、memory 或 skills。
+从 Phase 7 开始，不要跳到真实 provider、gateway、memory 或 skills。
 
 建议步骤：
 
@@ -137,8 +145,8 @@
    - `src/learn_hermes_agent/agent/prompt_builder.py`
    - `src/learn_hermes_agent/state/session_db.py`
    - `src/learn_hermes_agent/cli/main.py`
-5. 先 review Phase 5 当前代码是否仍可运行。
-6. 开始 Phase 6 Batch 2：`config.yaml` 最小读取和配置覆盖，不接真实 provider 或 gateway。
+5. 先 review Phase 6 当前代码是否仍可运行。
+6. 开始 Phase 7：Context Compression 和 Budget 的设计，不接真实 provider 或 gateway。
 
 ## 重要约束
 
@@ -665,6 +673,102 @@ Batch 2 边界：
 4. 支持覆盖 `model.provider`、`model.default`、`agent.max_iterations`。
 5. 配置解析失败时给出清晰 stderr 提示，并回退默认配置。
 6. 暂不实现 `config set`、`config edit`、真实 provider 或 credential 管理。
+
+## 2026-06-08 Phase 6 Batch 2 进度更新
+
+### 本次目标
+
+完成 Phase 6 第二批：实现 `.learn_hermes/config.yaml` 的最小读取、默认配置合并和错误降级。
+
+### 已完成
+
+- `pyproject.toml` 引入 `PyYAML` 依赖。
+- `src/learn_hermes_agent/config.py` 支持读取 `.learn_hermes/config.yaml`。
+- 新增 `read_raw_config()`：
+  - 配置文件不存在时返回空配置。
+  - YAML 解析失败时输出 stderr warning。
+  - YAML 顶层不是 object 时输出 stderr warning。
+  - 异常配置会回退默认配置。
+- 新增 `load_config()` 的深合并流程：
+  - `DEFAULT_CONFIG`
+  - user config
+  - `_deep_merge()`
+  - `_normalize_config()`
+- 支持配置覆盖：
+  - `model.provider`
+  - `model.default`
+  - `agent.max_iterations`
+- CLI `doctor` 和 `chat` 已能读取配置中的 fake model 名称。
+
+### 修改文件
+
+- `pyproject.toml`
+- `src/learn_hermes_agent/config.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `hermes_cli/config.py`
+- `cli-config.yaml.example`
+- `hermes_cli/runtime_provider.py`
+
+### 验证方式
+
+当前实现已用以下命令验证：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from learn_hermes_agent.config import load_config; c=load_config(); print(c['model']['provider']); print(c['model']['default']); print(c['agent']['max_iterations'])"
+uv run learn-hermes-agent doctor
+uv run learn-hermes-agent chat "config check"
+```
+
+已观察到：
+
+- `compileall` 通过。
+- 当前 `.learn_hermes/config.yaml` 可正常覆盖配置：
+
+  ```text
+  fake
+  fake-configured
+  3
+  ```
+
+- `doctor` 输出：
+
+  ```text
+  provider: fake
+  model: fake-configured
+  max_iterations: 3
+  ```
+
+- `chat "config check"` 输出 fake provider 响应，并使用 `fake-configured` 作为 model 名称。
+- 临时非法 YAML 配置会触发 stderr warning，并回退：
+
+  ```text
+  fake
+  fake-basic
+  10
+  ```
+
+### 设计结论
+
+- `yaml.safe_load()` 只负责解析 YAML，并在非法 YAML 时抛出解析异常。
+- `warning: failed to parse config file ...; using defaults.` 是本项目 `read_raw_config()` 的异常处理逻辑，不是 PyYAML 自动输出。
+- 当前只做最小配置读取和 normalize，不实现 `config set`、`config edit`、真实 provider resolver、credential 管理。
+- provider 仍保持 fake；配置中的 provider/model 当前只影响可观察输出和 fake provider 初始化。
+
+### 下一步
+
+进入 Phase 7：Context Compression 和 Budget。
+
+Phase 7 边界：
+
+1. 先设计 `IterationBudget` 和粗略 token 估算。
+2. 先实现长会话预算判断，不急着实现完整摘要质量。
+3. 压缩结果先作为普通 summary/context message 或 session metadata 处理。
+4. 暂不接真实 provider、memory、skills、gateway 或完整 session resume。
 
 ## 后续进度模板
 
