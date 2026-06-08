@@ -36,12 +36,19 @@ class SessionStore:
                     id text primary key,
                     title text,
                     system_prompt text,
+                    parent_session_id text,
+                    end_reason text,
+                    ended_at text,
                     created_at text not null,
-                    updated_at text not null
+                    updated_at text not null,
+                    foreign key (parent_session_id) references sessions(id)
                 )
                 """
             )
             self._ensure_column(conn, "sessions", "system_prompt", "text")
+            self._ensure_column(conn, "sessions", "parent_session_id", "text")
+            self._ensure_column(conn, "sessions", "end_reason", "text")
+            self._ensure_column(conn, "sessions", "ended_at", "text")
             conn.execute(
                 """
                 create table if not exists messages (
@@ -70,21 +77,42 @@ class SessionStore:
                     on sessions(updated_at)
                 """
             )
+            conn.execute(
+                """
+                create index if not exists idx_sessions_parent_session_id
+                    on sessions(parent_session_id)
+                """
+            )
 
-    def create_session(self, *, title: str | None = None,system_prompt: str | None = None,) -> str:
+    def create_session(self, *, title: str | None = None,system_prompt: str | None = None, parent_session_id: str | None = None) -> str:
         session_id = str(uuid.uuid4())
         now = utc_now_iso()
 
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO sessions (id, title, system_prompt, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO sessions (id, title, system_prompt, parent_session_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, title, system_prompt, now, now),
+                (session_id, title, system_prompt, parent_session_id, now, now),
             )
 
         return session_id
+
+    def end_session(self, session_id: str, reason: str):
+        now = utc_now_iso()
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE sessions
+                SET ended_at = ?,
+                    end_reason = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (now, reason, now, session_id),
+            )
 
     def append_message(self, session_id: str, message: ChatMessage) -> int:
         now = utc_now_iso()
@@ -218,7 +246,7 @@ class SessionStore:
         with self._connect() as conn:
             row = conn.execute(
                 """
-                select id, title, system_prompt, created_at, updated_at
+                select id, title, system_prompt, parent_session_id, end_reason, ended_at, created_at, updated_at
                 from sessions
                 where id = ?
                 """,
@@ -236,6 +264,9 @@ class SessionStore:
                 """
                 select sessions.id,
                        sessions.title,
+                       sessions.parent_session_id,
+                       sessions.end_reason,
+                       sessions.ended_at,
                        sessions.created_at,
                        sessions.updated_at,
                        count(messages.id) as message_count
