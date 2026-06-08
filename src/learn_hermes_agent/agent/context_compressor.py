@@ -66,6 +66,8 @@ def estimate_request_tokens_rough(messages: list[ChatMessage], *, system_prompt:
 
 
 def estimate_message_tokens_rough(message: ChatMessage) -> int:
+    # 固定的per-message固定开销，例如json的括号。
+    # 真实 tokenizer 会把 message 边界、role、结构标记等也算进 token。我们现在没有接真实 tokenizer，所以用：total = 4
     total = 4
     total += estimate_text_tokens_rough(str(message.get("role") or ""))
 

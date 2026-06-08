@@ -8,12 +8,14 @@ import sys
 from learn_hermes_agent import __version__
 from learn_hermes_agent.agent.core import AIAgent
 from learn_hermes_agent.agent.messages import ChatMessage
+from learn_hermes_agent.agent.prompt_builder import PromptBuilder
+from learn_hermes_agent.agent.context_compressor import CompressionConfig, ContextCompressor
 from learn_hermes_agent.cli.commands import format_help_lines, parse_slash_command
 from learn_hermes_agent.config import get_app_home, get_config_path, get_state_db_path, load_config
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 from learn_hermes_agent.state.session_db import SessionStore
-from learn_hermes_agent.agent.prompt_builder import PromptBuilder
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -101,6 +103,16 @@ def get_session_store() -> SessionStore:
 def build_system_prompt() -> str:
     return PromptBuilder().build()
 
+def build_context_compressor(config: dict) -> ContextCompressor:
+    compression = config["compression"]
+    compression_config = CompressionConfig(
+        enabled=compression["enabled"],
+        context_length=compression["context_length"],
+        threshold=compression["threshold"],
+        protect_first_n=compression["protect_first_n"],
+        protect_last_n=compression["protect_last_n"],
+    )
+    return ContextCompressor(compression_config)
 
 def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
     if tool_demo:
@@ -108,7 +120,8 @@ def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
     else:
         provider = FakeProviderTransport(model=config["model"]["default"])
 
-    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"])
+    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"], context_compressor=build_context_compressor(config))
+
 
 
 def run_doctor() -> int:
@@ -226,8 +239,15 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             history=history,
             system_prompt=system_prompt,
         )
-        new_messages = messages[before_count:]
-        store.append_messages(session_id, new_messages)
+        if agent.last_context_compressed:
+            # 触发压缩时，当前 session 的消息整体替换成压缩后的 working messages，避免旧消息重复或切片为空。
+            store.replace_messages(session_id, messages)
+            new_messages = messages
+        else:
+            # 没压缩的时候，直接追加messages即可
+            new_messages = messages[before_count:]
+            store.append_messages(session_id, new_messages)
+
         history = messages
 
         if show_messages:

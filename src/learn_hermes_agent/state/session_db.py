@@ -139,6 +139,62 @@ class SessionStore:
         for message in messages:
             self.append_message(session_id, message)
 
+
+    def replace_messages(self, session_id: str, messages: list[ChatMessage]):
+        now = utc_now_iso()
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                delete from messages where session_id = ?
+                """,
+                (session_id,),
+            )
+            for message in messages:
+                role = str(message.get("role") or "")
+                content = message.get("content")
+                name = message.get("name")
+                tool_call_id = message.get("tool_call_id")
+
+                tool_calls = message.get("tool_calls")
+                tool_calls_json = json.dumps(tool_calls, ensure_ascii=False) if tool_calls is not None else None
+                raw_json = json.dumps(message, ensure_ascii=False)
+
+                conn.execute(
+                    """
+                     INSERT INTO messages (
+                        session_id,
+                        role,
+                        content,
+                        name,
+                        tool_call_id,
+                        tool_calls_json,
+                        raw_json,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session_id,
+                        role,
+                        content,
+                        name,
+                        tool_call_id,
+                        tool_calls_json,
+                        raw_json,
+                        now,
+                    ),
+                )
+
+            conn.execute(
+                """
+                UPDATE sessions
+                SET updated_at = ?
+                WHERE id = ?
+                """,
+                (now, session_id),
+            )
+
     def get_session_messages(self, session_id: str) -> list[ChatMessage]:
         with self._connect() as conn:
             rows = conn.execute(

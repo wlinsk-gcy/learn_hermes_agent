@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from learn_hermes_agent.agent.messages import ChatMessage, system_message, tool_message, user_message
+from learn_hermes_agent.agent.context_compressor import ContextCompressor
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
@@ -12,16 +13,23 @@ from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 class AIAgent:
     # *表示后面的参数必须用关键字传参，不能用位置传参
     def __init__(self, provider: ProviderTransport, *, max_iterations: int = 10,
-                 registry: ToolRegistry | None = None) -> None:
+                 registry: ToolRegistry | None = None, context_compressor: ContextCompressor | None = None) -> None:
         self.provider = provider
         self.max_iterations = max_iterations
         self.registry = registry or get_default_registry()
+        self.context_compressor = context_compressor or ContextCompressor()
+        self.last_context_compressed = False
 
     def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None, system_prompt: str | None = None) -> list[ChatMessage]:
+        self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
 
         for _ in range(self.max_iterations):
+            before_compression_count = len(messages)
+            messages = self.context_compressor.compress(messages, system_prompt=system_prompt)
+            if len(messages) < before_compression_count:
+                self.last_context_compressed = True
             request_messages = self._build_request_messages(messages,system_prompt=system_prompt)
             assistant_response = self.provider.complete(request_messages)
             self._validate_assistant_message(assistant_response)
