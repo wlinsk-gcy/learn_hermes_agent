@@ -10,7 +10,9 @@ name = "learn-hermes-agent"
 version = "0.1.0"
 description = "A from-scratch learning reimplementation of Hermes Agent"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pyyaml==6.0.3"
+]
 
 # cli入口，让 [project.scripts] 里的命令行入口生效
 [project.scripts]
