@@ -5,6 +5,7 @@ from pathlib import Path
 
 from learn_hermes_agent.agent.system_prompt import STABLE_SYSTEM_PROMPT
 from learn_hermes_agent.agent.memory_store import MemoryStore
+from learn_hermes_agent.agent.skills import SkillLibrary
 
 
 @dataclass(frozen=True)
@@ -25,9 +26,16 @@ class PromptLayers:
 
 class PromptBuilder:
     """定义 system prompt 构建器。它的职责是：读取需要的上下文文件，然后组装 PromptLayers。"""
-    def __init__(self, *, project_root: Path | None = None, memory_store: MemoryStore | None = None,) -> None:
+    def __init__(
+            self,
+            *,
+            project_root: Path | None = None,
+            memory_store: MemoryStore | None = None,
+            skill_library: SkillLibrary | None = None,
+    ) -> None:
         self.project_root = project_root or Path.cwd()
         self.memory_store = memory_store
+        self.skill_library = skill_library
 
     def build(self) -> str:
         layers = PromptLayers(
@@ -64,9 +72,18 @@ class PromptBuilder:
 
     def _build_volatile_layer(self) -> str:
         """未来可以放user profile，当前时间，当前session状态， 运行环境摘要"""
-        if self.memory_store is None:
-            return ""
-        return self.memory_store.system_prompt_block()
+        blocks: list[str] = []
+        if self.memory_store is not None:
+            memory_block = self.memory_store.system_prompt_block()
+            if memory_block:
+                blocks.append(memory_block)
+
+        if self.skill_library is not None:
+            skills_block = self.skill_library.system_prompt_block()
+            if skills_block:
+                blocks.append(skills_block)
+
+        return "\n\n".join(blocks)
 
     def _read_context_file(self, path: Path) -> str:
         if not path.exists() or not path.is_file():

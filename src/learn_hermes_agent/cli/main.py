@@ -12,17 +12,18 @@ from learn_hermes_agent.agent.prompt_builder import PromptBuilder
 from learn_hermes_agent.agent.context_compressor import CompressionConfig, ContextCompressor
 from learn_hermes_agent.cli.commands import format_help_lines, parse_slash_command
 from learn_hermes_agent.config import (
-      get_app_home,
-      get_config_path,
-      get_memory_dir_path,
-      get_state_db_path,
-      load_config,
-  )
+    get_app_home,
+    get_config_path,
+    get_memory_dir_path,
+    get_skills_dir_path,
+    get_state_db_path,
+    load_config,
+)
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 from learn_hermes_agent.state.session_db import SessionStore
 from learn_hermes_agent.agent.memory_store import MemoryStore
-
+from learn_hermes_agent.agent.skills import SkillLibrary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +95,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Tool arguments as a JSON object.",
     )
 
+    skills_parser = subparsers.add_parser(
+        "skills",
+        help="List available skills.",
+    )
+    skills_parser.add_argument(
+        "--category",
+        help="Optional skill category filter.",
+    )
+
+    view_skill_parser = subparsers.add_parser(
+        "view-skill",
+        help="View one skill or a linked file inside it.",
+    )
+    view_skill_parser.add_argument(
+        "name",
+        help="Skill name.",
+    )
+    view_skill_parser.add_argument(
+        "file_path",
+        nargs="?",
+        help="Optional relative file path inside the skill directory.",
+    )
+
     subparsers.add_parser(
         "sessions",
         help="List persisted chat sessions.",
@@ -118,7 +142,12 @@ def get_session_store() -> SessionStore:
 
 def build_system_prompt() -> str:
     memory_store = MemoryStore(get_memory_dir_path())
-    return PromptBuilder(memory_store=memory_store).build()
+    skill_library = SkillLibrary(get_skills_dir_path())
+    return PromptBuilder(
+        memory_store=memory_store,
+        skill_library=skill_library,
+    ).build()
+
 
 def build_context_compressor(config: dict) -> ContextCompressor:
     compression = config["compression"]
@@ -131,14 +160,15 @@ def build_context_compressor(config: dict) -> ContextCompressor:
     )
     return ContextCompressor(compression_config)
 
+
 def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
     if tool_demo:
         provider = tool_demo_provider(model=config["model"]["default"])
     else:
         provider = FakeProviderTransport(model=config["model"]["default"])
 
-    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"], context_compressor=build_context_compressor(config))
-
+    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"],
+                   context_compressor=build_context_compressor(config))
 
 
 def run_doctor() -> int:
@@ -162,16 +192,17 @@ def run_doctor() -> int:
     return 0
 
 
-def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: bool = False,resume_session_id: str | None = None,) -> int:
+def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: bool = False,
+             resume_session_id: str | None = None, ) -> int:
     if resume_session_id is not None and message is not None:
-        print("error: --resume currently supports interactive chat only; omit the message argument.",file=sys.stderr)
+        print("error: --resume currently supports interactive chat only; omit the message argument.", file=sys.stderr)
         return 1
     if message is None:
-        return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages, resume_session_id=resume_session_id)
+        return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages,
+                                    resume_session_id=resume_session_id)
 
     config = load_config()
     agent = build_agent(config, tool_demo=tool_demo)
-
 
     system_prompt = build_system_prompt()
     store = get_session_store()
@@ -182,7 +213,6 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
 
     if agent.last_context_compressed:
         print("context compressed: yes")
-
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))
@@ -195,7 +225,8 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
     return 0
 
 
-def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False, resume_session_id: str | None = None) -> int:
+def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False,
+                         resume_session_id: str | None = None) -> int:
     """启动连续对话"""
     config = load_config()
     store = get_session_store()
@@ -283,7 +314,6 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             print(f"command not implemented: /{command.name}")
             continue
 
-
         before_count = len(history)
         messages = agent.run_conversation(
             user_input,
@@ -321,8 +351,6 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
         print(f"assistant: {final_message['content']}")
 
 
-
-
 def run_tools() -> int:
     definitions = get_tool_definitions()
     # indent=2 表示：把 JSON 格式化成多行，并且每一层缩进 2 个空格。
@@ -343,6 +371,26 @@ def run_call_tool(name: str, arguments: str) -> int:
         return 1
 
     print(result_json)
+    return 0
+
+
+def run_skills(category: str | None = None) -> int:
+    library = SkillLibrary(get_skills_dir_path())
+    payload = library.list_skills(category)
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+    return 0
+
+
+def run_view_skill(name: str, file_path: str | None = None) -> int:
+    library = SkillLibrary(get_skills_dir_path())
+
+    try:
+        payload = library.view_skill(name, file_path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0
 
 
@@ -373,6 +421,7 @@ def run_show_session(session_id: str) -> int:
     print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     # argparse 遇到 --help 会直接打印帮助并退出，流程不会往下走
@@ -398,6 +447,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "call-tool":
         return run_call_tool(args.name, args.arguments)
+
+    if args.command == "skills":
+        return run_skills(args.category)
+
+    if args.command == "view-skill":
+        return run_view_skill(args.name, args.file_path)
 
     if args.command == "sessions":
         return run_sessions()
