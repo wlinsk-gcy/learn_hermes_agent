@@ -1079,6 +1079,78 @@ uv run python -m compileall -q src
 2. 整理 Phase 7 当前剩余项：compression lock 是否继续后延，还是实现一个最小 no-op 保护接口。
 3. 明确 Phase 8 是否开始 memory/skills，还是先做 session resume 的最小入口。
 
+## 2026-06-09 Phase 7 Batch 4 进度更新
+
+### 本次目标
+
+为 Phase 7 收口最小 session lineage 可观察性，让 compression parent/child 关系可以通过 CLI 清楚查看。
+
+### 已完成
+
+- 新增 `SessionStore.get_session_chain(session_id)`，从当前 session 往上追 parent，并返回 root -> current。
+- 新增 `SessionStore.get_compression_tip(session_id)`，当传入 compression parent 时追到最新 continuation child。
+- 新增私有 helper `_get_latest_child_session_id(parent_session_id)`。
+- 增强 `show-session <session_id>` 输出：
+  - `session`
+  - `compression_tip`
+  - `lineage`
+  - `messages`
+- missing session 会输出 stderr 错误并返回非零退出码。
+
+### 修改文件
+
+- `src/learn_hermes_agent/state/session_db.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `hermes_state.py`
+- `agent/conversation_compression.py`
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run python -c "from pathlib import Path; import tempfile; from learn_hermes_agent.state.session_db import SessionStore; tmp=tempfile.TemporaryDirectory(ignore_cleanup_errors=True); s=SessionStore(Path(tmp.name)/'state.db'); s.initialize(); p=s.create_session(title='parent'); s.end_session(p, 'compression'); c=s.create_session(title='child', parent_session_id=p); print(s.get_compression_tip(p) == c); print([row['id'] for row in s.get_session_chain(c)] == [p, c]); tmp.cleanup()"
+uv run learn-hermes-agent show-session <known_session_id>
+uv run learn-hermes-agent show-session missing-session-id
+@("one <long>", "two <long>", "three <long>", "/sessions", "/q") | uv run learn-hermes-agent chat
+uv run learn-hermes-agent show-session <parent_session_id>
+uv run learn-hermes-agent show-session <child_session_id>
+```
+
+已观察到：
+
+- `compileall` 通过。
+- helper 验证输出：
+
+  ```text
+  True
+  True
+  ```
+
+- 普通 session 的 `compression_tip` 等于自身，`lineage` 只包含自身。
+- missing session 返回退出码 `1`，并输出 `error: session not found: ...`。
+- 真实 compression split 中 parent 的 `end_reason` 为 `compression`。
+- parent 的 `compression_tip` 指向 child。
+- child 的 `lineage` 包含 parent 和 child。
+- child 的 `messages` 包含 `[Context compression summary]`。
+
+### 设计结论
+
+- Batch 4 只增强 lineage 可观察性，不改变 compression 触发、chat 持久化、session list projection 或 provider 行为。
+- `get_compression_tip()` 在链路不完整时返回当前可确认的 session id，而不是抛错或返回 `None`，保证观察命令可用。
+- Phase 7 最小版已经收口：context compression、iteration budget、session split、lineage/tip observability 都已具备。
+- compression lock、真实 provider usage、LLM summary、gateway projection、resume redirect 和 memory hooks 继续后延。
+
+### 下一步
+
+进入 Phase 8 前建议先做一个短决策：是否直接开始 memory/skills，还是先补一个最小 `resume` 入口来消费 Batch 4 已建立的 `compression_tip`。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

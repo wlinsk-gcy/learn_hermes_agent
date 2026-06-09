@@ -314,8 +314,22 @@ def run_sessions() -> int:
 
 def run_show_session(session_id: str) -> int:
     store = get_session_store()
+    session = store.get_session(session_id)
+    if session is None:
+        print(f"error: session not found: {session_id}", file=sys.stderr)
+        return 1
+
     messages = store.get_session_messages(session_id)
-    print(json.dumps(messages, indent=2, ensure_ascii=False))
+    payload = {
+        "session": {
+            **session,
+            "message_count": len(messages),
+        },
+        "compression_tip": store.get_compression_tip(session_id),
+        "lineage": store.get_session_chain(session_id),
+        "messages": messages,
+    }
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
     return 0
 
 def main(argv: list[str] | None = None) -> int:
