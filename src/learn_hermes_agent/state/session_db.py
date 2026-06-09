@@ -258,6 +258,56 @@ class SessionStore:
 
         return dict(row)
 
+    def get_session_chain(self, session_id: str) -> list[dict[str, Any]]:
+        """Return parent lineage from root to the requested session."""
+        chain: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        current_id: str | None = session_id
+
+        while current_id and current_id not in seen:
+            seen.add(current_id)
+            session = self.get_session(current_id)
+            if session is None:
+                break
+            chain.append(session)
+            parent_id = session.get("parent_session_id")
+            current_id = str(parent_id) if parent_id else None
+
+        chain.reverse()
+        return chain
+
+    def get_compression_tip(self, session_id: str) -> str:
+        """返回这条 compression continuation 链上“当前能确认的最后一个 session id”。"""
+        current_id = session_id
+        seen: set[str] = set()
+
+        while current_id not in seen:
+            seen.add(current_id)
+            current_session = self.get_session(current_id)
+            if current_session is None:
+                return current_id
+
+            if current_session.get("end_reason") != "compression":
+                return current_id
+
+            # 走到这里，end_reason == compression
+            child_id = self._get_latest_child_session_id(current_id)
+            if child_id is None:
+                # 但数据库找不到他的child session
+                # 所以当前session是可观测到的链路末端
+                # 可能会出现这种情况的有：
+                # - 压缩 parent 已被标记为 end_reason="compression"，但 child 还没创建。
+                # - 程序在 end_session(parent, "compression") 后、create_session(parent_session_id=parent) 前异常退出。
+                # - 数据库是手工构造的，只有 parent，没有 child。
+                # - 迁移或 debug 场景里 lineage 不完整。
+                # 这里不返回 None，是为了保持函数签名稳定。无论链路完整不完整，都返回一个最安全、可用的 session id。
+                return current_id
+
+            current_id = child_id
+        return current_id
+
+
+
     def list_sessions(self) -> list[dict[str, Any]]:
         with (self._connect() as conn):
             rows = conn.execute(
@@ -278,6 +328,23 @@ class SessionStore:
             ).fetchall()
 
         return [dict(row) for row in rows]
+
+    def _get_latest_child_session_id(self, parent_session_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                select id
+                from sessions
+                where parent_session_id = ?
+                order by created_at desc, id desc
+                limit 1
+                """,
+                (parent_session_id,),
+            ).fetchone()
+
+        if row is None:
+            return None
+        return str(row["id"])
 
     def _ensure_column(self, conn: sqlite3.Connection, table_name: str, column_name: str,
                        column_definition: str) -> None:
