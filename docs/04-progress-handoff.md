@@ -1300,6 +1300,97 @@ uv run learn-hermes-agent chat --resume missing
 
 进入 Phase 8 Batch 2：Skills 结构层。建议先实现 `skills/` 目录扫描、`SKILL.md` frontmatter 解析和 CLI/tool 可观察入口，不期待 fake provider 自主选择 skill。
 
+## 2026-06-09 Phase 8 Batch 2 Skills 进度更新
+
+### 本次目标
+
+在不接真实 LLM provider 的前提下，先实现 Skills 的只读结构层：本地 `skills/` 扫描、`SKILL.md` frontmatter 解析、`skills_list` / `skill_view` 工具、CLI 可观察入口和轻量 skills index 注入。
+
+### 已完成
+
+- 新增 `get_skills_dir_path()`，统一使用 `.learn_hermes/skills/` 作为本地 skills 目录。
+- 新增 `SkillLibrary`：
+  - 扫描 `.learn_hermes/skills/**/SKILL.md`。
+  - 解析 YAML frontmatter 中的 `name` 和 `description`。
+  - 支持目录名 fallback、正文首个非标题行 fallback、name/description 长度限制。
+  - 支持 category 过滤。
+  - 支持查看 `SKILL.md` 和 skill 目录内 linked file。
+  - 拦截绝对路径、`..` 和越界 linked file 访问。
+  - 使用 `utf-8-sig` 兼容 PowerShell 写出的 UTF-8 BOM。
+- 新增内置只读 tools：
+  - `skills_list`
+  - `skill_view`
+- `discover_builtin_tools()` 现在注册 `echo`、`memory`、`skills_list` 和 `skill_view`。
+- CLI 新增：
+  - `skills [--category CATEGORY]`
+  - `view-skill NAME [FILE_PATH]`
+- `PromptBuilder` 支持可选 `SkillLibrary`，并把轻量 `Available skills` index 放进 volatile layer。
+- `build_system_prompt()` 同时传入 `MemoryStore` 和 `SkillLibrary`，让新 session 的 `system_prompt` 固化当前 memory snapshot 和 skills index。
+
+### 修改文件
+
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/agent/skills.py`
+- `src/learn_hermes_agent/tools/skills.py`
+- `src/learn_hermes_agent/tools/registry.py`
+- `src/learn_hermes_agent/agent/prompt_builder.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-06-09-phase-8-skills-design.md`
+- `docs/plans/2026-06-09-phase-8-skills-plan.md`
+
+### 对照的 Hermes 源码
+
+- `tools/skills_tool.py`
+- `agent/skill_utils.py`
+- `agent/agent_init.py`
+- `agent/conversation_loop.py`
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent skills
+uv run learn-hermes-agent skills --category planning
+uv run learn-hermes-agent view-skill writing-plans
+uv run learn-hermes-agent view-skill writing-plans references/example.md
+uv run learn-hermes-agent call-tool skills_list '{\"category\":\"planning\"}'
+uv run learn-hermes-agent call-tool skill_view '{\"name\":\"writing-plans\"}'
+uv run learn-hermes-agent call-tool echo '{\"text\":\"echo_ok\"}'
+uv run learn-hermes-agent call-tool memory '{\"action\":\"read\",\"target\":\"memory\"}'
+uv run learn-hermes-agent chat --resume missing
+```
+
+另用临时 `LEARN_HERMES_HOME` 验证：创建 sample skill 后运行新 `chat`，新 session 的 `system_prompt` 包含 `Available skills` 和 `writing-plans`，且不包含 linked file 内容 `Example reference`。
+
+已观察到：
+
+- `compileall` 通过。
+- `tools` 输出包含 `echo`、`memory`、`skills_list` 和 `skill_view`。
+- `skills` CLI 能列出 sample skill。
+- `skills --category planning` 能过滤 sample skill。
+- `view-skill writing-plans` 能读取 `SKILL.md`。
+- `view-skill writing-plans references/example.md` 能读取 linked file。
+- `view-skill writing-plans ../outside.md` 会返回越界路径错误。
+- `call-tool skills_list` 和 `call-tool skill_view` 可运行。
+- `echo` 和 `memory` 工具仍可调用。
+- `chat --resume missing` 仍返回预期错误路径。
+
+### 设计结论
+
+- 当前 Batch 2 只实现只读 Skills 结构层，不实现 `skill_manage`。
+- fake provider 不会自主选择 skill；当前价值在于 schema、扫描、查看、CLI 和 prompt index 边界已经打通。
+- system prompt 只注入轻量 skill index，不自动注入完整 `SKILL.md` 或 linked file 内容。
+- `skill_manage`、自动 skill review、background update、external skill dirs、platform gating 和 plugin skills 后延。
+
+### 下一步
+
+进入 Phase 8 Batch 3 前建议先做决策：是否补一个最小 `skill_manage` 写入能力，还是先进入 Phase 9 Provider Runtime。由于 `skill_manage` 涉及文件写入和自修改安全边界，默认建议先做设计，不直接实现。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

@@ -309,7 +309,7 @@ Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，�
 
 ## Phase 8：Memory 和 Skills
 
-**状态：进行中（Batch 1 Memory 结构层已完成）**
+**状态：进行中（Batch 2 Skills 结构层已完成）**
 
 **目标：** 实现 Hermes 自改进能力的基础。
 
@@ -318,7 +318,8 @@ Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，�
 - Create: `src/learn_hermes_agent/agent/memory_store.py`
 - Create: `src/learn_hermes_agent/tools/memory.py`
 - Create: `src/learn_hermes_agent/agent/skills.py`
-- Create: `src/learn_hermes_agent/tools/skill_manager_tool.py`
+- Create: `src/learn_hermes_agent/tools/skills.py`
+- Later: `src/learn_hermes_agent/tools/skill_manager_tool.py`
 - Modify: `src/learn_hermes_agent/agent/prompt_builder.py`
 - Modify: `src/learn_hermes_agent/cli/main.py`
 - Modify: `src/learn_hermes_agent/config.py`
@@ -330,15 +331,18 @@ Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，�
 3. memory 注入 system prompt。
 4. 实现 `skills/` 目录扫描。
 5. 实现 `SKILL.md` frontmatter 解析。
-6. 注册 `skill_manage`。
-7. CLI 支持列出 skills。
-8. 更新进度文档。
+6. 注册只读 `skills_list` / `skill_view`。
+7. CLI 支持列出和查看 skills。
+8. 后续再评估 `skill_manage`、自动 skill review 和自修改边界。
+9. 更新进度文档。
 
 **验收：**
 
 agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注入。
 
 当前 Batch 1 已完成：新增 file-backed `MemoryStore`，使用 `.learn_hermes/memories/MEMORY.md` 和 `USER.md` 持久化；新增内置 `memory` tool，支持 `add` / `read` / `replace` / `remove`；`PromptBuilder` 的 volatile layer 可注入 `Persistent memory snapshot`；CLI 新建 session 时会把 snapshot 固化进 `sessions.system_prompt`。当前仍不实现自动记忆、external memory provider、prefetch/sync hooks、Skills、真实 provider 或测试。
+
+当前 Batch 2 已完成：新增 `SkillLibrary`，可扫描 `.learn_hermes/skills/**/SKILL.md`、解析 YAML frontmatter、列出 skill metadata、查看 `SKILL.md` 或 skill 目录内 linked file；新增内置只读工具 `skills_list` / `skill_view`；CLI 新增 `skills` / `view-skill`；`PromptBuilder` 的 volatile layer 可注入轻量 `Available skills` index。当前仍不实现 `skill_manage`、自动创建/更新 skill、background review、external skill dirs、platform gating、真实 provider 或测试。
 
 ## Phase 9：Provider Runtime 扩展
 
