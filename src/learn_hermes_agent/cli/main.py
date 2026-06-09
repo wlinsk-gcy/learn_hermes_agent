@@ -11,10 +11,17 @@ from learn_hermes_agent.agent.messages import ChatMessage
 from learn_hermes_agent.agent.prompt_builder import PromptBuilder
 from learn_hermes_agent.agent.context_compressor import CompressionConfig, ContextCompressor
 from learn_hermes_agent.cli.commands import format_help_lines, parse_slash_command
-from learn_hermes_agent.config import get_app_home, get_config_path, get_state_db_path, load_config
+from learn_hermes_agent.config import (
+      get_app_home,
+      get_config_path,
+      get_memory_dir_path,
+      get_state_db_path,
+      load_config,
+  )
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 from learn_hermes_agent.state.session_db import SessionStore
+from learn_hermes_agent.agent.memory_store import MemoryStore
 
 
 
@@ -110,7 +117,8 @@ def get_session_store() -> SessionStore:
 
 
 def build_system_prompt() -> str:
-    return PromptBuilder().build()
+    memory_store = MemoryStore(get_memory_dir_path())
+    return PromptBuilder(memory_store=memory_store).build()
 
 def build_context_compressor(config: dict) -> ContextCompressor:
     compression = config["compression"]

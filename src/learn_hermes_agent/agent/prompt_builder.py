@@ -4,6 +4,7 @@ from dataclasses import dataclass # dataclass，用来快速定义只保存数�
 from pathlib import Path
 
 from learn_hermes_agent.agent.system_prompt import STABLE_SYSTEM_PROMPT
+from learn_hermes_agent.agent.memory_store import MemoryStore
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,9 @@ class PromptLayers:
 
 class PromptBuilder:
     """定义 system prompt 构建器。它的职责是：读取需要的上下文文件，然后组装 PromptLayers。"""
-    def __init__(self, *, project_root: Path | None = None) -> None:
+    def __init__(self, *, project_root: Path | None = None, memory_store: MemoryStore | None = None,) -> None:
         self.project_root = project_root or Path.cwd()
+        self.memory_store = memory_store
 
     def build(self) -> str:
         layers = PromptLayers(
@@ -61,8 +63,10 @@ class PromptBuilder:
         return "Project context:\n\n" + "\n\n---\n\n".join(blocks)
 
     def _build_volatile_layer(self) -> str:
-        """先留空，未来可以放Memory，user profile，当前时间，当前session状态， 运行环境摘要"""
-        return ""
+        """未来可以放user profile，当前时间，当前session状态， 运行环境摘要"""
+        if self.memory_store is None:
+            return ""
+        return self.memory_store.system_prompt_block()
 
     def _read_context_file(self, path: Path) -> str:
         if not path.exists() or not path.is_file():

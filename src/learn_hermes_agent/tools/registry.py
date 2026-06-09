@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+# 这里的Callable表示：ToolHandler 是一个可调用对象，它接收 一个参数，这个参数类型是 dict[str, Any]，返回值可以是任意类型。
 ToolHandler = Callable[[dict[str, Any]], Any]
 
 
@@ -55,7 +56,9 @@ _default_registry: ToolRegistry | None = None
 def discover_builtin_tools(registry: ToolRegistry | None = None) -> ToolRegistry:
     target = registry or ToolRegistry()
     from learn_hermes_agent.tools.echo import register_tools as register_echo_tools
+    from learn_hermes_agent.tools.memory import register_tools as register_memory_tools
     register_echo_tools(target)
+    register_memory_tools(target)
     return target
 
 

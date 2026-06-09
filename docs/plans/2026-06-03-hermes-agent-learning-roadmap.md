@@ -309,17 +309,19 @@ Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，�
 
 ## Phase 8：Memory 和 Skills
 
-**状态：未开始**
+**状态：进行中（Batch 1 Memory 结构层已完成）**
 
 **目标：** 实现 Hermes 自改进能力的基础。
 
 **文件：**
 
 - Create: `src/learn_hermes_agent/agent/memory_store.py`
-- Create: `src/learn_hermes_agent/tools/memory_tool.py`
+- Create: `src/learn_hermes_agent/tools/memory.py`
 - Create: `src/learn_hermes_agent/agent/skills.py`
 - Create: `src/learn_hermes_agent/tools/skill_manager_tool.py`
-- Modify: `src/learn_hermes_agent/agent/system_prompt.py`
+- Modify: `src/learn_hermes_agent/agent/prompt_builder.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
+- Modify: `src/learn_hermes_agent/config.py`
 
 **步骤：**
 
@@ -335,6 +337,8 @@ Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，�
 **验收：**
 
 agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注入。
+
+当前 Batch 1 已完成：新增 file-backed `MemoryStore`，使用 `.learn_hermes/memories/MEMORY.md` 和 `USER.md` 持久化；新增内置 `memory` tool，支持 `add` / `read` / `replace` / `remove`；`PromptBuilder` 的 volatile layer 可注入 `Persistent memory snapshot`；CLI 新建 session 时会把 snapshot 固化进 `sessions.system_prompt`。当前仍不实现自动记忆、external memory provider、prefetch/sync hooks、Skills、真实 provider 或测试。
 
 ## Phase 9：Provider Runtime 扩展
 

@@ -49,6 +49,10 @@ def get_state_db_path() -> Path:
     return get_app_home() / "state.db"
 
 
+def get_memory_dir_path() -> Path:
+    return get_app_home() / "memories"
+
+
 def read_raw_config() -> dict[str, Any]:
     config_path = get_config_path()
     if not config_path.exists():

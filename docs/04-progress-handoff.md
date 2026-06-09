@@ -1219,6 +1219,87 @@ uv run learn-hermes-agent chat "resume smoke"
 
 现在可以进入 Phase 8 的结构版 Memory/Skills 设计；由于仍未接真实 LLM provider，建议先实现 memory/skills 的存储、扫描、schema 和注入边界，不期待 fake provider 展现自主使用行为。
 
+## 2026-06-09 Phase 8 Batch 1 Memory 进度更新
+
+### 本次目标
+
+在不接真实 LLM provider 的前提下，先实现 Memory 的结构层：本地文件存储、手工 `memory` tool、system prompt snapshot 注入边界。
+
+### 已完成
+
+- 新增 `get_memory_dir_path()`，统一使用 `.learn_hermes/memories/` 作为本地 memory 目录。
+- 新增 `MemoryStore`：
+  - `MEMORY.md` 保存 agent/project 长期记忆。
+  - `USER.md` 保存用户画像/偏好类记忆。
+  - 支持 `load()`、`read()`、`add()`、`replace()`、`remove()` 和 `system_prompt_block()`。
+  - 写入时做基础内容校验，prompt 注入前做基础 marker 过滤。
+- 新增内置 `memory` tool：
+  - `action`: `add` / `read` / `replace` / `remove`
+  - `target`: `memory` / `user`
+  - 通过 `call-tool memory ...` 可手工写读长期记忆。
+- `discover_builtin_tools()` 现在同时注册 `echo` 和 `memory`。
+- `PromptBuilder` 支持可选 `MemoryStore`，并把 memory snapshot 放进 volatile layer。
+- `build_system_prompt()` 创建 `MemoryStore(get_memory_dir_path())`，让新 session 的 `system_prompt` 固化当前 memory snapshot。
+
+### 修改文件
+
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/agent/memory_store.py`
+- `src/learn_hermes_agent/tools/memory.py`
+- `src/learn_hermes_agent/tools/registry.py`
+- `src/learn_hermes_agent/agent/prompt_builder.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-06-09-phase-8-memory-design.md`
+- `docs/plans/2026-06-09-phase-8-memory-plan.md`
+
+### 对照的 Hermes 源码
+
+- `tools/memory_tool.py`
+- `agent/memory_manager.py`
+- `agent/memory_provider.py`
+- `tools/skills_tool.py`
+- `agent/skill_utils.py`
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent call-tool memory '{\"action\":\"add\",\"target\":\"memory\",\"content\":\"memory_one\"}'
+uv run learn-hermes-agent call-tool memory '{\"action\":\"replace\",\"target\":\"memory\",\"old_text\":\"memory_one\",\"content\":\"memory_two\"}'
+uv run learn-hermes-agent call-tool memory '{\"action\":\"remove\",\"target\":\"memory\",\"old_text\":\"memory_two\"}'
+uv run learn-hermes-agent call-tool memory '{\"action\":\"read\",\"target\":\"memory\"}'
+uv run learn-hermes-agent call-tool echo '{\"text\":\"echo_ok\"}'
+uv run learn-hermes-agent chat --resume missing
+```
+
+另用临时 `LEARN_HERMES_HOME` 验证：写入 `project_uses_uv` 后运行新 `chat`，新 session 的 `system_prompt` 同时包含 `Persistent memory snapshot` 和 `project_uses_uv`。
+
+已观察到：
+
+- `compileall` 通过。
+- `tools` 输出包含 `echo` 和 `memory`。
+- `memory` tool 的 add/read/replace/remove 都能通过 CLI 链路执行。
+- `MEMORY.md` 文件会被真实写入。
+- 新 session 的 `system_prompt` 会固化当前 memory snapshot。
+- `echo` 工具仍可调用。
+- `chat --resume missing` 仍返回预期错误路径。
+
+### 设计结论
+
+- 当前 Batch 1 只做 Memory 的可运行结构层，不做自动记忆。
+- fake provider 不会自主调用 `memory` tool；当前价值在于 schema、存储、tool 边界和 prompt 注入链路已经打通。
+- `system_prompt` 使用创建 session 时的 frozen snapshot；后续 memory 变化不会 retroactively 改写旧 session。
+- 真实 Hermes 的 `MemoryManager`、external provider、prefetch/sync hooks 和 compression hooks 后延。
+
+### 下一步
+
+进入 Phase 8 Batch 2：Skills 结构层。建议先实现 `skills/` 目录扫描、`SKILL.md` frontmatter 解析和 CLI/tool 可观察入口，不期待 fake provider 自主选择 skill。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：
