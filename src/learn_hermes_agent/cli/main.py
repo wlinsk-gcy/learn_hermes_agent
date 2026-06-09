@@ -57,6 +57,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the full conversation messages as JSON.",
     )
+    # metavar是控制 --help 里的参数占位符显示，不影响实际变量名
+    # 例如：uv run learn-hermes-agent chat --help 会看到类似：--resume SESSION_ID   Resume an existing session.
+    # 如果不写metavar的话，argparse 默认会用参数名的大写形式，通常显示成：--resume RESUME
+    # SESSION_ID 只是 help 文案里的占位符名称
+    chat_parser.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        help="Resume an existing session. Compression parents resume from their latest continuation child.",
+    )
     # uv run learn-hermes-agent tools
     subparsers.add_parser(
         "tools",
@@ -145,9 +154,12 @@ def run_doctor() -> int:
     return 0
 
 
-def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: bool = False) -> int:
+def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: bool = False,resume_session_id: str | None = None,) -> int:
+    if resume_session_id is not None and message is not None:
+        print("error: --resume currently supports interactive chat only; omit the message argument.",file=sys.stderr)
+        return 1
     if message is None:
-        return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages)
+        return run_interactive_chat(tool_demo=tool_demo, show_messages=show_messages, resume_session_id=resume_session_id)
 
     config = load_config()
     agent = build_agent(config, tool_demo=tool_demo)
@@ -175,19 +187,40 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
     return 0
 
 
-def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False) -> int:
+def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False, resume_session_id: str | None = None) -> int:
     """启动连续对话"""
     config = load_config()
     store = get_session_store()
 
-    system_prompt = build_system_prompt()
-    session_id = store.create_session(title="interactive chat", system_prompt=system_prompt)
+    if resume_session_id is None:
+        system_prompt = build_system_prompt()
+        session_id = store.create_session(title="interactive chat", system_prompt=system_prompt)
+        history: list[ChatMessage] = []
+        resumed_from: str | None = None
+    else:
+        requested_session = store.get_session(resume_session_id)
+        if requested_session is None:
+            print(f"error: session not found: {resume_session_id}", file=sys.stderr)
+            return 1
+
+        session_id = store.get_compression_tip(resume_session_id)
+        session = store.get_session(session_id)
+        if session is None:
+            print(f"error: resume target not found: {session_id}", file=sys.stderr)
+            return 1
+
+        raw_system_prompt = session.get("system_prompt")
+        system_prompt = str(raw_system_prompt) if raw_system_prompt else build_system_prompt()
+        history = store.get_session_messages(session_id)
+        resumed_from = resume_session_id
+
     agent = build_agent(config, tool_demo=tool_demo)
-    history: list[ChatMessage] = []
 
     print("learn-hermes-agent interactive chat")
     print("Type /help for commands, /exit to quit.")
     print(f"session_id: {session_id}")
+    if resumed_from is not None:
+        print(f"resumed_from: {resumed_from}")
 
     while True:
         try:
@@ -349,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
             args.message,
             tool_demo=args.tool_demo,
             show_messages=args.show_messages,
+            resume_session_id=args.resume,
         )
 
     if args.command == "tools":

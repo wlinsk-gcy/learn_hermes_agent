@@ -1151,6 +1151,74 @@ uv run learn-hermes-agent show-session <child_session_id>
 
 进入 Phase 8 前建议先做一个短决策：是否直接开始 memory/skills，还是先补一个最小 `resume` 入口来消费 Batch 4 已建立的 `compression_tip`。
 
+## 2026-06-09 Phase 7.5 Minimal Resume 进度更新
+
+### 本次目标
+
+在进入 Memory/Skills 前补齐最小 session resume 入口，让用户可以从已有 session 继续交互，并在传入 compression parent 时自动跳到 latest continuation child。
+
+### 已完成
+
+- `chat` 子命令新增 `--resume SESSION_ID` 参数。
+- `run_chat()` 拒绝 `chat --resume <id> "message"` one-shot resume，当前只支持交互模式。
+- `run_interactive_chat()` 支持从 persisted session 初始化：
+  - 普通 session 直接读取该 session。
+  - compression parent 通过 `get_compression_tip()` 跳到 latest continuation child。
+  - 使用 tip session 的 `system_prompt`，缺失时 fallback 到 `build_system_prompt()`。
+  - 使用 tip session messages 作为 history。
+- resume 启动时输出当前 `session_id` 和 `resumed_from`。
+- missing session 返回非零退出码并输出 stderr 错误。
+
+### 修改文件
+
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `hermes_state.py`
+  - `get_compression_tip()`
+  - `resolve_resume_session_id()`
+- `agent/conversation_compression.py`
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent chat --help
+uv run learn-hermes-agent chat --resume missing "hello"
+uv run learn-hermes-agent chat --resume missing
+uv run learn-hermes-agent chat --resume <compression_parent_session_id>
+uv run learn-hermes-agent show-session <parent_session_id>
+uv run learn-hermes-agent show-session <child_session_id>
+uv run learn-hermes-agent chat "resume smoke"
+@("hello normal", "/q") | uv run learn-hermes-agent chat
+```
+
+已观察到：
+
+- `compileall` 通过。
+- `chat --help` 显示 `--resume SESSION_ID`。
+- one-shot resume 返回退出码 `1`，并提示当前只支持 interactive resume。
+- missing session 返回退出码 `1`，并提示 `error: session not found: missing`。
+- 用 compression parent resume 时，启动输出的 `session_id` 是 child/tip，`resumed_from` 是 parent。
+- parent `message_count` 保持不变。
+- child messages 追加了 resume 后的新 user message 和 fake assistant response。
+- 普通 one-shot `chat` 和普通交互 `chat` 仍可运行。
+
+### 设计结论
+
+- Phase 7.5 只做 interactive resume，不做 one-shot resume，避免复制一套单轮持久化和 compression split 逻辑。
+- resume 消费 Phase 7 Batch 4 的 `compression_tip`，把 lineage 可观察性转化为可用的 continuation 能力。
+- 当前仍不进入真实 provider、Memory、Skills、session list projection 或 title/search resume。
+
+### 下一步
+
+现在可以进入 Phase 8 的结构版 Memory/Skills 设计；由于仍未接真实 LLM provider，建议先实现 memory/skills 的存储、扫描、schema 和注入边界，不期待 fake provider 展现自主使用行为。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

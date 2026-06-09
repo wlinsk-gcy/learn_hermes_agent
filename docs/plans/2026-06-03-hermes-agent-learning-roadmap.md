@@ -305,6 +305,8 @@ CLI 支持连续对话、切 session、查看工具。当前阶段不复刻 TUI�
 
 当前 Batch 4 已完成：新增 session lineage 可观察性，`SessionStore.get_session_chain()` 可返回 root -> current 链路，`SessionStore.get_compression_tip()` 可从 compression parent 追到最新 continuation child，`show-session` 可输出 session metadata、compression tip、lineage 和 messages。Phase 7 最小版至此收口；compression lock、真实 provider usage、LLM summary、gateway projection、resume redirect、memory hooks 延后。
 
+Phase 7.5 已完成：新增最小 `chat --resume <session_id>` 交互入口，可从普通 session 继续，也可把 compression parent 解析到 latest continuation child。该批次不实现 one-shot resume、session list projection、真实 provider、memory 或 skills。
+
 ## Phase 8：Memory 和 Skills
 
 **状态：未开始**
