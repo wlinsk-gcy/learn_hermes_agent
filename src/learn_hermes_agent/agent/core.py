@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from learn_hermes_agent.agent.messages import ChatMessage, system_message, tool_message, user_message
+from learn_hermes_agent.agent.messages import ChatMessage, assistant_message, system_message, tool_message, user_message
 from learn_hermes_agent.agent.context_compressor import ContextCompressor
 from learn_hermes_agent.agent.iteration_budget import IterationBudget
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.providers.base import ProviderTransport
+from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 
 
@@ -21,8 +22,15 @@ class AIAgent:
         self.context_compressor = context_compressor or ContextCompressor()
         self.last_context_compressed = False
         self.iteration_budget = IterationBudget(max_iterations)
+        self.last_usage: Usage | None = None
+        self.last_finish_reason: str | None = None
+        self.session_prompt_tokens = 0
+        self.session_completion_tokens = 0
+        self.session_total_tokens = 0
+        self.session_cached_tokens = 0
 
-    def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None, system_prompt: str | None = None) -> list[ChatMessage]:
+    def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None,
+                         system_prompt: str | None = None) -> list[ChatMessage]:
         self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
@@ -33,8 +41,11 @@ class AIAgent:
             messages = self.context_compressor.compress(messages, system_prompt=system_prompt)
             if len(messages) < before_compression_count:
                 self.last_context_compressed = True
-            request_messages = self._build_request_messages(messages,system_prompt=system_prompt)
-            assistant_response = self.provider.complete(request_messages)
+            request_messages = self._build_request_messages(messages, system_prompt=system_prompt)
+            tools = self.registry.list_definitions()
+            normalized_response = self.provider.complete(request_messages, tools=tools)
+            self._record_provider_response(normalized_response)
+            assistant_response = self._assistant_message_from_response(normalized_response)
             self._validate_assistant_message(assistant_response)
 
             messages.append(assistant_response)
@@ -52,7 +63,72 @@ class AIAgent:
             f"Exceeded max_iterations={self.iteration_budget.max_total} before receiving a final assistant message."
         )
 
-    def _build_request_messages(self, messages: list[ChatMessage], *, system_prompt: str | None = None) -> list[ChatMessage]:
+    def _record_provider_response(self, response: NormalizedResponse) -> None:
+        self.last_finish_reason = response.finish_reason
+        self.last_usage = response.usage
+
+        if response.usage is None:
+            return
+
+        self.session_prompt_tokens += response.usage.prompt_tokens
+        self.session_completion_tokens += response.usage.completion_tokens
+        self.session_cached_tokens += response.usage.cached_tokens
+
+        total_tokens = response.usage.total_tokens
+        if total_tokens <= 0:
+            total_tokens = response.usage.prompt_tokens + response.usage.completion_tokens
+
+        self.session_total_tokens += total_tokens
+
+    def usage_snapshot(self) -> dict[str, object]:
+        usage: Usage | None = self.last_usage
+        last_usage_payload: dict[str, int] | None = None
+
+        if usage is not None:
+            last_usage_payload = {
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "cached_tokens": usage.cached_tokens,
+            }
+
+        return {
+            "last_finish_reason": self.last_finish_reason,
+            "last_usage": last_usage_payload,
+            "session_usage": {
+                "prompt_tokens": self.session_prompt_tokens,
+                "completion_tokens": self.session_completion_tokens,
+                "total_tokens": self.session_total_tokens,
+                "cached_tokens": self.session_cached_tokens,
+            },
+        }
+
+    def _assistant_message_from_response(self, response: NormalizedResponse) -> ChatMessage:
+        tool_calls = self._tool_calls_to_message_dicts(response.tool_calls)
+        return assistant_message(response.content, tool_calls=tool_calls or None)
+
+    def _tool_calls_to_message_dicts(self, tool_calls: list[ToolCall] | None) -> list[dict[str, Any]]:
+        if not tool_calls:
+            return []
+
+        result: list[dict[str, Any]] = []
+        for index, tool_call in enumerate(tool_calls, start=1):
+            tool_call_id = tool_call.id or f"call_{index}"
+            result.append(
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.name,
+                        "arguments": tool_call.arguments,
+                    },
+                }
+            )
+
+        return result
+
+    def _build_request_messages(self, messages: list[ChatMessage], *, system_prompt: str | None = None) -> list[
+        ChatMessage]:
         """这个helper只影响发给Provider的messages，不影响respond to user 的messages"""
         if not system_prompt:
             return list(messages)

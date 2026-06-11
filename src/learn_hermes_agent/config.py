@@ -13,6 +13,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "provider": "fake",
         # 默认模型
         "default": "fake-basic",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "timeout_seconds": 60.0,
     },
     "agent": {
         # 最大可迭代次数
@@ -108,12 +111,46 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         model_config = {}
 
     default_model_config = DEFAULT_CONFIG["model"]
+
     provider = model_config.get("provider")
     model = model_config.get("default")
+    base_url = model_config.get("base_url")
+    api_key_env = model_config.get("api_key_env")
+    timeout_seconds = model_config.get("timeout_seconds")
+
+    if provider:
+        provider = str(provider).strip().lower()
+    else:
+        provider = default_model_config["provider"]
+
+    if model:
+        model = str(model).strip()
+    else:
+        model = default_model_config["default"]
+
+    if base_url:
+        base_url = str(base_url).strip()
+    else:
+        base_url = default_model_config["base_url"]
+
+    if api_key_env:
+        api_key_env = str(api_key_env).strip()
+    else:
+        api_key_env = default_model_config["api_key_env"]
+
+    if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or timeout_seconds <= 0
+    ):
+        timeout_seconds = default_model_config["timeout_seconds"]
 
     config["model"] = {
-        "provider": str(provider).strip() if provider else default_model_config["provider"],
-        "default": str(model).strip() if model else default_model_config["default"],
+        "provider": provider,
+        "default": model,
+        "base_url": base_url,
+        "api_key_env": api_key_env,
+        "timeout_seconds": float(timeout_seconds),
     }
 
     agent_config = config.get("agent")

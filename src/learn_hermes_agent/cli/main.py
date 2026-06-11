@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import argparse
 import json
 import platform
@@ -20,7 +21,7 @@ from learn_hermes_agent.config import (
     load_config,
 )
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
-from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
+from learn_hermes_agent.providers.runtime import build_provider_transport
 from learn_hermes_agent.state.session_db import SessionStore
 from learn_hermes_agent.agent.memory_store import MemoryStore
 from learn_hermes_agent.agent.skills import SkillLibrary
@@ -162,13 +163,13 @@ def build_context_compressor(config: dict) -> ContextCompressor:
 
 
 def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
-    if tool_demo:
-        provider = tool_demo_provider(model=config["model"]["default"])
-    else:
-        provider = FakeProviderTransport(model=config["model"]["default"])
+    provider = build_provider_transport(config, tool_demo=tool_demo)
 
-    return AIAgent(provider=provider, max_iterations=config["agent"]["max_iterations"],
-                   context_compressor=build_context_compressor(config))
+    return AIAgent(
+        provider=provider,
+        max_iterations=config["agent"]["max_iterations"],
+        context_compressor=build_context_compressor(config),
+    )
 
 
 def run_doctor() -> int:
@@ -180,8 +181,16 @@ def run_doctor() -> int:
     print(f"platform: {platform.platform()}")
     print(f"home: {get_app_home()}")
     print(f"config: {get_config_path()}")
-    print(f"provider: {config['model']['provider']}")
-    print(f"model: {config['model']['default']}")
+    model_config = config["model"]
+    api_key_env = model_config["api_key_env"]
+    api_key_env_status = "set" if os.environ.get(api_key_env) else "missing"
+
+    print(f"provider: {model_config['provider']}")
+    print(f"model: {model_config['default']}")
+    print(f"base_url: {model_config['base_url']}")
+    print(f"api_key_env: {api_key_env}")
+    print(f"api_key_env_status: {api_key_env_status}")
+    print(f"timeout_seconds: {model_config['timeout_seconds']}")
     print(f"max_iterations: {config['agent']['max_iterations']}")
     compression = config["compression"]
     print(f"compression_enabled: {compression['enabled']}")
@@ -202,13 +211,22 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
                                     resume_session_id=resume_session_id)
 
     config = load_config()
-    agent = build_agent(config, tool_demo=tool_demo)
+    try:
+        agent = build_agent(config, tool_demo=tool_demo)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     system_prompt = build_system_prompt()
     store = get_session_store()
     session_id = store.create_session(title=message[:80], system_prompt=system_prompt)
 
-    messages = agent.run_conversation(message, system_prompt=system_prompt)
+    try:
+        messages = agent.run_conversation(message, system_prompt=system_prompt)
+    except (RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
     store.append_messages(session_id, messages)
 
     if agent.last_context_compressed:
@@ -216,6 +234,7 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
 
     if show_messages:
         print(json.dumps(messages, indent=2, ensure_ascii=False))
+        print(json.dumps(agent.usage_snapshot(), indent=2, ensure_ascii=False))
         print(f"session_id: {session_id}")
         return 0
 
@@ -253,7 +272,11 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
         history = store.get_session_messages(session_id)
         resumed_from = resume_session_id
 
-    agent = build_agent(config, tool_demo=tool_demo)
+    try:
+        agent = build_agent(config, tool_demo=tool_demo)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     print("learn-hermes-agent interactive chat")
     print("Type /help for commands, /exit to quit.")
@@ -315,11 +338,16 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             continue
 
         before_count = len(history)
-        messages = agent.run_conversation(
-            user_input,
-            history=history,
-            system_prompt=system_prompt,
-        )
+        try:
+            messages = agent.run_conversation(
+                user_input,
+                history=history,
+                system_prompt=system_prompt,
+            )
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            continue
+
         if agent.last_context_compressed:
             # 触发压缩时，结束当前session并创建子session进行延续
             old_session_id = session_id
@@ -344,8 +372,8 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
             print("context compressed: yes")
 
         if show_messages:
-            print(json.dumps(new_messages, indent=2,
-                             ensure_ascii=False))
+            print(json.dumps(new_messages, indent=2, ensure_ascii=False))
+            print(json.dumps(agent.usage_snapshot(), indent=2, ensure_ascii=False))
 
         final_message = messages[-1]
         print(f"assistant: {final_message['content']}")
