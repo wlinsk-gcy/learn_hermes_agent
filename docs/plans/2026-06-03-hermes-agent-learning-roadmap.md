@@ -346,31 +346,42 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 9：Provider Runtime 扩展
 
-**状态：未开始**
+**状态：最小版本已完成，高级 provider 适配后延**
 
-**目标：** 从 fake/openai 扩展到多 provider。
+**目标：** 从 fake provider 扩展到 Hermes 风格 provider runtime，让 agent loop 只依赖规范化后的 provider response，而不是直接理解每个厂商的原始响应。
 
 **文件：**
 
 - Create: `src/learn_hermes_agent/providers/openai_compatible.py`
-- Create: `src/learn_hermes_agent/providers/anthropic.py`
 - Create: `src/learn_hermes_agent/providers/runtime.py`
 - Create: `src/learn_hermes_agent/providers/types.py`
+- Create: `src/learn_hermes_agent/providers/fallback.py`
+- Modify: `src/learn_hermes_agent/providers/base.py`
+- Modify: `src/learn_hermes_agent/providers/fake.py`
+- Modify: `src/learn_hermes_agent/agent/core.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
 - Modify: `src/learn_hermes_agent/config.py`
 
 **步骤：**
 
-1. 定义 normalized response 类型。
-2. OpenAI-compatible provider 规范化。
-3. usage normalization。
-4. runtime provider resolver。
-5. fallback chain。
-6. 再接 Anthropic 或 Gemini。
-7. 更新进度文档。
+1. 已定义 Hermes 风格 `NormalizedResponse`、`ToolCall`、`Usage`。
+2. 已将 `ProviderTransport.complete()` 改为返回 `NormalizedResponse`，并支持可选 `tools`。
+3. 已实现 OpenAI-compatible `/chat/completions` provider，解析 `content`、`tool_calls`、`finish_reason` 和 usage。
+4. 已实现 runtime provider resolver，支持 `fake`、`openai-compatible` / `openai`。
+5. 已扩展 `config.yaml` 的 model 字段：`provider`、`default`、`base_url`、`api_key_env`、`timeout_seconds`、`fallbacks`。
+6. 已在 `AIAgent` 中记录 `last_usage`、`last_finish_reason` 和 session token usage，并在 `--show-messages` 输出 `usage_snapshot()`。
+7. 已实现 `FallbackProviderTransport`，按顺序尝试 provider，并记录实际命中的 provider index/model、最后错误和 `fallback_used` 可观测状态。
+8. 已保持显式主 provider 缺少 API key 时 fail fast，不静默降级到 fake。
+9. Anthropic、Gemini、Codex Responses、streaming、retry/backoff、model catalog 后延。
 
 **验收：**
 
-至少两个 provider 可按配置切换；fake fallback 可观察。
+- `uv run python -m compileall -q src` 通过。
+- 默认 fake provider 仍可运行。
+- `chat --tool-demo --show-messages` 仍能输出 `user -> assistant(tool_calls) -> tool -> assistant(final)`。
+- OpenAI-compatible provider 在缺少 API key 时输出可读错误。
+- `doctor` 显示 provider、model、base_url、api_key_env 状态、timeout 和 fallback 概要，不打印真实 API key。
+- fallback wrapper 可在主 provider 失败时切到后备 provider；即使主 provider 和 fallback provider 的 model 名相同，也能通过 `last_provider_index` 正确显示 `fallback_used: true`。
 
 ## Phase 10：Security / Approval / Terminal
 

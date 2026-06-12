@@ -1391,6 +1391,106 @@ uv run learn-hermes-agent chat --resume missing
 
 进入 Phase 8 Batch 3 前建议先做决策：是否补一个最小 `skill_manage` 写入能力，还是先进入 Phase 9 Provider Runtime。由于 `skill_manage` 涉及文件写入和自修改安全边界，默认建议先做设计，不直接实现。
 
+## 2026-06-12 Phase 9 Provider Runtime 进度更新
+
+### 本次目标
+
+完成 Phase 9 的最小 Provider Runtime：让当前 agent loop 能通过 Hermes 风格的规范化 provider response 接入真实 OpenAI-compatible provider，并具备 usage 与 fallback chain 的基础可观测性。
+
+### 已完成
+
+- 新增 Hermes 风格 provider 类型：
+  - `NormalizedResponse`
+  - `ToolCall`
+  - `Usage`
+- `ProviderTransport.complete()` 现在返回 `NormalizedResponse`，并支持可选 `tools`。
+- `FakeProviderTransport` 已迁移到 `NormalizedResponse` 返回形态。
+- 新增 `OpenAICompatibleProviderTransport`：
+  - 使用 stdlib `urllib.request` 发送 POST 到 `/chat/completions`。
+  - 支持传入 OpenAI function tool definitions。
+  - 解析 `content`、`tool_calls`、`finish_reason` 和 token usage。
+  - 对 HTTP、URL、timeout 和 invalid JSON 返回可读 `RuntimeError`。
+- 新增 runtime provider resolver：
+  - `fake`
+  - `openai-compatible`
+  - `openai` alias
+  - `--tool-demo` 继续强制使用 scripted fake provider。
+- 扩展 `config.yaml` 的 `model` 配置：
+  - `provider`
+  - `default`
+  - `base_url`
+  - `api_key_env`
+  - `timeout_seconds`
+  - `fallbacks`
+- CLI `doctor` 输出 provider 配置概要和 API key env var 状态，但不打印真实 API key。
+- `AIAgent` 已记录 provider usage：
+  - `last_usage`
+  - `last_finish_reason`
+  - session prompt/completion/total/cached token counters
+  - `usage_snapshot()`
+- CLI `chat --show-messages` 会输出 `usage_snapshot()`。
+- 新增 `FallbackProviderTransport`：
+  - 按顺序尝试 provider。
+  - 记录 `last_provider_model`、`last_provider_index`、`last_error`。
+  - `usage_snapshot()` 输出 `configured_model`、`last_model`、`last_provider_index`、`fallback_used`、`last_error`。
+  - 使用 index 判断 fallback 是否发生，避免同名 model 误判。
+- 保持显式主 provider 缺少 API key 时 fail fast，不静默 fallback 到 fake。
+
+### 修改文件
+
+- `src/learn_hermes_agent/providers/types.py`
+- `src/learn_hermes_agent/providers/base.py`
+- `src/learn_hermes_agent/providers/fake.py`
+- `src/learn_hermes_agent/providers/openai_compatible.py`
+- `src/learn_hermes_agent/providers/runtime.py`
+- `src/learn_hermes_agent/providers/fallback.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/plans/2026-06-10-phase-9-provider-runtime-design.md`
+- `docs/plans/2026-06-10-phase-9-provider-runtime-plan.md`
+- `docs/plans/2026-06-11-phase-9-normalized-response-correction.md`
+
+### 对照的 Hermes 源码
+
+- `agent/transports/types.py`
+- `agent/transports/base.py`
+- `agent/transports/chat_completions.py`
+- `agent/agent_init.py`
+- `agent/chat_completion_helpers.py`
+- `agent/agent_runtime_helpers.py`
+
+### 验证方式
+
+已运行并观察：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent doctor
+uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
+uv run learn-hermes-agent chat "hello"
+```
+
+另用脚本验证：
+
+- runtime 在无 fallback 时返回单 provider。
+- runtime 在配置 `fallbacks` 时返回 `FallbackProviderTransport`。
+- 主 provider 缺少 API key 时返回可读错误，不静默降级。
+- fallback wrapper 在主 provider 失败、后备 provider 成功时记录 `last_provider_index = 1`。
+- 主 provider 和 fallback provider 使用同名 model 时，`fallback_used` 仍能正确为 `true`。
+
+### 设计结论
+
+- 当前实现方向对齐 Hermes：agent loop 消费规范化 provider response，provider 差异收敛在 transport/runtime 层。
+- 当前学习项目只实现最小 provider runtime，不照搬 Hermes 的完整 provider 状态机、client cache、cooldown、streaming 和多 API mode。
+- `NormalizedResponse.provider_data` 暂不扩展为 fallback 状态承载面；fallback 可观测性先放在 `FallbackProviderTransport` 和 `AIAgent.usage_snapshot()`。
+- 缺 API key 是配置错误，应 fail fast；fallback 只处理 provider 构建成功后的请求阶段失败。
+- Anthropic、Gemini、Codex Responses、streaming、retry/backoff、model catalog 后延。
+
+### 下一步
+
+先不要开始 Phase 10 实现。进入 Phase 10 前，应先对齐 `D:\python-develop\project\hermes-agent` 中安全、审批和执行环境相关设计，再写 Phase 10 设计文档。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：
