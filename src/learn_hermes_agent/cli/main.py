@@ -191,6 +191,21 @@ def run_doctor() -> int:
     print(f"api_key_env: {api_key_env}")
     print(f"api_key_env_status: {api_key_env_status}")
     print(f"timeout_seconds: {model_config['timeout_seconds']}")
+
+    fallbacks = model_config.get("fallbacks", [])
+    if not isinstance(fallbacks, list):
+        fallbacks = []
+
+    print(f"fallback_count: {len(fallbacks)}")
+
+    for index, fallback in enumerate(fallbacks, start=1):
+        if not isinstance(fallback, dict):
+            continue
+
+        print(f"fallback_{index}_provider: {fallback.get('provider', 'fake')}")
+        print(f"fallback_{index}_model: {fallback.get('default', 'fake-basic')}")
+        print(f"fallback_{index}_api_key_env: {fallback.get('api_key_env', 'OPENAI_API_KEY')}")
+
     print(f"max_iterations: {config['agent']['max_iterations']}")
     compression = config["compression"]
     print(f"compression_enabled: {compression['enabled']}")

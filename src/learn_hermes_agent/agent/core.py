@@ -92,6 +92,17 @@ class AIAgent:
                 "cached_tokens": usage.cached_tokens,
             }
 
+        provider_model = self.provider.model
+        # 只有fallbackProvider才会有last_provider_model的更新，其他provider都是None
+        last_provider_model = getattr(self.provider, "last_provider_model", None)
+        last_provider_index = getattr(self.provider, "last_provider_index", None)
+        last_provider_error = getattr(self.provider, "last_error", None)
+
+        if not isinstance(last_provider_model, str) or not last_provider_model:
+            last_provider_model = provider_model
+
+        fallback_used = isinstance(last_provider_index, int) and last_provider_index > 0
+
         return {
             "last_finish_reason": self.last_finish_reason,
             "last_usage": last_usage_payload,
@@ -100,6 +111,13 @@ class AIAgent:
                 "completion_tokens": self.session_completion_tokens,
                 "total_tokens": self.session_total_tokens,
                 "cached_tokens": self.session_cached_tokens,
+            },
+            "provider": {
+                "configured_model": provider_model,
+                "last_model": last_provider_model,
+                "last_provider_index": last_provider_index,
+                "fallback_used": fallback_used,
+                "last_error": last_provider_error,
             },
         }
 

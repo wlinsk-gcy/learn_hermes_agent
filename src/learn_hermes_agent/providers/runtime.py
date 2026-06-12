@@ -5,6 +5,7 @@ from typing import Any
 
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
+from learn_hermes_agent.providers.fallback import FallbackProviderTransport
 from learn_hermes_agent.providers.openai_compatible import OpenAICompatibleProviderTransport
 
 OPENAI_COMPATIBLE_PROVIDERS = frozenset({"openai-compatible", "openai"})
@@ -12,11 +13,32 @@ OPENAI_COMPATIBLE_PROVIDERS = frozenset({"openai-compatible", "openai"})
 
 def build_provider_transport(config: dict[str, Any], *, tool_demo: bool = False) -> ProviderTransport:
     model_config = _get_model_config(config)
-    model = _get_string(model_config, "default", "fake-basic")
 
     if tool_demo:
+        model = _get_string(model_config, "default", "fake-basic")
         return tool_demo_provider(model=model)
 
+    primary_provider = _build_single_provider(model_config)
+    fallback_configs = model_config.get("fallbacks")
+
+    if not isinstance(fallback_configs, list) or not fallback_configs:
+        return primary_provider
+
+    providers: list[ProviderTransport] = [primary_provider]
+
+    for fallback_config in fallback_configs:
+        if not isinstance(fallback_config, dict):
+            continue
+        providers.append(_build_single_provider(fallback_config))
+
+    if len(providers) == 1:
+        return primary_provider
+
+    return FallbackProviderTransport(providers)
+
+
+def _build_single_provider(model_config: dict[str, Any]) -> ProviderTransport:
+    model = _get_string(model_config, "default", "fake-basic")
     provider = _get_string(model_config, "provider", "fake").lower()
 
     if provider == "fake":

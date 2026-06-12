@@ -16,6 +16,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
         "timeout_seconds": 60.0,
+        "fallbacks": [],
     },
     "agent": {
         # 最大可迭代次数
@@ -117,6 +118,7 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     base_url = model_config.get("base_url")
     api_key_env = model_config.get("api_key_env")
     timeout_seconds = model_config.get("timeout_seconds")
+    fallbacks = model_config.get("fallbacks")
 
     if provider:
         provider = str(provider).strip().lower()
@@ -145,12 +147,63 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     ):
         timeout_seconds = default_model_config["timeout_seconds"]
 
+    normalized_fallbacks: list[dict[str, Any]] = []
+
+    if isinstance(fallbacks, list):
+        for fallback in fallbacks:
+            if not isinstance(fallback, dict):
+                continue
+
+            fallback_provider = fallback.get("provider")
+            fallback_model = fallback.get("default")
+            fallback_base_url = fallback.get("base_url")
+            fallback_api_key_env = fallback.get("api_key_env")
+            fallback_timeout_seconds = fallback.get("timeout_seconds")
+
+            if fallback_provider:
+                fallback_provider = str(fallback_provider).strip().lower()
+            else:
+                fallback_provider = default_model_config["provider"]
+
+            if fallback_model:
+                fallback_model = str(fallback_model).strip()
+            else:
+                fallback_model = default_model_config["default"]
+
+            if fallback_base_url:
+                fallback_base_url = str(fallback_base_url).strip()
+            else:
+                fallback_base_url = default_model_config["base_url"]
+
+            if fallback_api_key_env:
+                fallback_api_key_env = str(fallback_api_key_env).strip()
+            else:
+                fallback_api_key_env = default_model_config["api_key_env"]
+
+            if (
+                    isinstance(fallback_timeout_seconds, bool)
+                    or not isinstance(fallback_timeout_seconds, (int, float))
+                    or fallback_timeout_seconds <= 0
+            ):
+                fallback_timeout_seconds = default_model_config["timeout_seconds"]
+
+            normalized_fallbacks.append(
+                {
+                    "provider": fallback_provider,
+                    "default": fallback_model,
+                    "base_url": fallback_base_url,
+                    "api_key_env": fallback_api_key_env,
+                    "timeout_seconds": float(fallback_timeout_seconds),
+                }
+            )
+
     config["model"] = {
         "provider": provider,
         "default": model,
         "base_url": base_url,
         "api_key_env": api_key_env,
         "timeout_seconds": float(timeout_seconds),
+        "fallbacks": normalized_fallbacks,
     }
 
     agent_config = config.get("agent")
