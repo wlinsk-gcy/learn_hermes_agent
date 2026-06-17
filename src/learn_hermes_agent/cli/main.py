@@ -213,6 +213,11 @@ def run_doctor() -> int:
     print(f"compression_threshold: {compression['threshold']}")
     print(f"compression_protect_first_n: {compression['protect_first_n']}")
     print(f"compression_protect_last_n: {compression['protect_last_n']}")
+
+    security = config["security"]
+    print(f"security_approval_mode: {security['approval_mode']}")
+    print(f"security_yolo: {security['yolo']}")
+    print(f"security_workspace_root: {security['workspace_root']}")
     return 0
 
 

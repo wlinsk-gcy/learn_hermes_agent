@@ -28,7 +28,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "threshold": 0.5,
         "protect_first_n": 2,
         "protect_last_n": 6,
-    }
+    },
+    "security": {
+        "approval_mode": "ask",
+        "yolo": False,
+        "workspace_root": ".",
+    },
 }
 
 
@@ -251,6 +256,34 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "threshold": float(threshold),
         "protect_first_n": protect_first_n,
         "protect_last_n": protect_last_n,
+    }
+
+    security_config = config.get("security")
+    if not isinstance(security_config, dict):
+        security_config = {}
+
+    default_security_config = DEFAULT_CONFIG["security"]
+
+    approval_mode = security_config.get("approval_mode")
+    if isinstance(approval_mode, str):
+        approval_mode = approval_mode.strip().lower()
+    if approval_mode not in {"ask", "auto", "deny"}:
+        approval_mode = default_security_config["approval_mode"]
+
+    yolo = security_config.get("yolo")
+    if not isinstance(yolo, bool):
+        yolo = default_security_config["yolo"]
+
+    workspace_root = security_config.get("workspace_root")
+    if workspace_root:
+        workspace_root = str(workspace_root).strip()
+    else:
+        workspace_root = default_security_config["workspace_root"]
+
+    config["security"] = {
+        "approval_mode": approval_mode,
+        "yolo": yolo,
+        "workspace_root": workspace_root,
     }
 
     return config
