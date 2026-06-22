@@ -1491,6 +1491,109 @@ uv run learn-hermes-agent chat "hello"
 
 先不要开始 Phase 10 实现。进入 Phase 10 前，应先对齐 `D:\python-develop\project\hermes-agent` 中安全、审批和执行环境相关设计，再写 Phase 10 设计文档。
 
+## 2026-06-22 Phase 10 Batch 1 Safety / Approval Primitives 进度更新
+
+### 本次目标
+
+完成 Phase 10 Batch 1：先建立最小安全/审批策略层和工具执行上下文，不开放新的高风险工具。
+
+### 已完成
+
+- 新增 `ToolExecutionContext`：
+  - 携带 `session_id`、`task_id`、`cwd`、`workspace_root`、`approval_mode`、`yolo_enabled`。
+  - `create_tool_execution_context()` 从当前配置创建每轮工具执行上下文。
+  - `normalize_approval_mode()` 将非法审批模式回退到 `ask`。
+- 扩展安全配置：
+  - `security.approval_mode`
+  - `security.yolo`
+  - `security.workspace_root`
+  - CLI `doctor` 现在输出规范化后的 security 配置。
+- 新增命令审批策略：
+  - `CommandRisk`
+  - `ApprovalDecision`
+  - `classify_command()`
+  - `check_command_approval()`
+  - hardline 命令永远先于 yolo/auto 被阻断。
+- 新增文件路径安全策略：
+  - `PathDecision`
+  - `resolve_workspace_path()`
+  - `check_read_path()`
+  - `check_write_path()`
+  - 阻断 workspace 外路径、敏感凭据文件、敏感目录、系统路径、`.git` 写入和 `.learn_hermes` 内部状态写入。
+- 将 `ToolExecutionContext` 贯穿到工具分发链路：
+  - `AIAgent.run_conversation(..., tool_context=...)`
+  - `safe_handle_function_call(..., context=...)`
+  - `handle_function_call(..., context=...)`
+  - `_preflight_tool_call()` 在 handler 执行前预留 `terminal`、`read_file`、`write_file`、`patch` 的统一拦截点。
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/tool_context.py`
+- `src/learn_hermes_agent/agent/file_safety.py`
+- `src/learn_hermes_agent/tools/approval.py`
+- `src/learn_hermes_agent/model_tools.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `tools/approval.py`
+- `agent/file_safety.py`
+- `agent/tool_executor.py`
+- `tools/terminal_tool.py`
+
+### 验证方式
+
+已运行并观察：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent doctor
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent call-tool echo '{\"text\":\"hello\"}'
+uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
+```
+
+另用手工策略命令验证：
+
+```powershell
+uv run python -c "from learn_hermes_agent.agent.tool_context import create_tool_execution_context; from learn_hermes_agent.tools.approval import check_command_approval; ctx=create_tool_execution_context({}); print(check_command_approval('echo hello', ctx).to_dict()); print(check_command_approval('sudo reboot', ctx).to_dict()); print(check_command_approval('rm -rf /', ctx).to_dict())"
+uv run python -c "from learn_hermes_agent.agent.tool_context import create_tool_execution_context; from learn_hermes_agent.agent.file_safety import check_read_path, check_write_path; ctx=create_tool_execution_context({}); print(check_read_path('README.md', ctx).to_dict()); print(check_write_path('.env', ctx).to_dict()); print(check_write_path('.ssh/id_rsa', ctx).to_dict()); print(check_write_path('.learn_hermes/config.yaml', ctx).to_dict())"
+```
+
+已观察到：
+
+- `compileall` 通过。
+- `doctor` 输出 `security_approval_mode: ask`、`security_yolo: False`、`security_workspace_root: .`。
+- `tools` 仍列出既有 `echo`、`memory`、`skill_view`、`skills_list`。
+- `call-tool echo` 返回 `{"text": "hello"}`。
+- `chat --tool-demo --show-messages` 仍输出 `user -> assistant(tool_calls) -> tool -> assistant(final)`。
+- 命令策略：
+  - `echo hello` -> `allowed`
+  - `sudo reboot` -> `approval_required`
+  - `rm -rf /` -> `blocked`
+- 文件策略：
+  - `README.md` read -> `allowed`
+  - `.env` write -> `blocked`
+  - `.ssh/id_rsa` write -> `blocked`
+  - `.learn_hermes/config.yaml` write -> `blocked`
+
+说明：普通沙箱下 `uv` 访问 `C:\Users\admin\AppData\Local\uv\cache` 会被拒绝；上述 `uv` 验证已按权限规则授权后运行。
+
+### 设计结论
+
+- Phase 10 Batch 1 对齐 Hermes 的核心意图：安全/审批策略先集中在统一模块中，工具 handler 不自行发明安全规则。
+- hardline block 必须优先于 `yolo_enabled` 和 `approval_mode=auto`，避免高风险命令被模式开关绕过。
+- 文件安全是 defense-in-depth，不是完整安全边界；真正开放 terminal 前仍必须保留命令审批策略。
+- 当前 Batch 1 只接入策略和上下文，不注册 `terminal`、`read_file`、`write_file`、`patch`，也不实现 checkpoint。
+
+### 下一步
+
+进入 Phase 10 Batch 2 前，应继续遵守当前边界：先设计并实现 file tools with safety，不开始 terminal local backend，不实现 checkpoint。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

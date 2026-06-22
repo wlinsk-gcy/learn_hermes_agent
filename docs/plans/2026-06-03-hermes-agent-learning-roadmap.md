@@ -383,31 +383,63 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 - `doctor` 显示 provider、model、base_url、api_key_env 状态、timeout 和 fallback 概要，不打印真实 API key。
 - fallback wrapper 可在主 provider 失败时切到后备 provider；即使主 provider 和 fallback provider 的 model 名相同，也能通过 `last_provider_index` 正确显示 `fallback_used: true`。
 
-## Phase 10：Security / Approval / Terminal
+## Phase 10：Security / Approval / Execution
 
-**状态：未开始**
+**状态：Batch 1 已完成**
 
-**目标：** 为强工具加安全边界。
+**目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、terminal 和 checkpoint。
 
-**文件：**
+**Batch 1：Safety / Approval Primitives（已完成）**
 
+已完成文件：
+
+- Create: `src/learn_hermes_agent/agent/tool_context.py`
+- Create: `src/learn_hermes_agent/agent/file_safety.py`
 - Create: `src/learn_hermes_agent/tools/approval.py`
-- Create: `src/learn_hermes_agent/tools/terminal_tool.py`
-- Create: `src/learn_hermes_agent/tools/path_security.py`
-- Create: `src/learn_hermes_agent/tools/checkpoint_manager.py`
+- Modify: `src/learn_hermes_agent/model_tools.py`
+- Modify: `src/learn_hermes_agent/agent/core.py`
+- Modify: `src/learn_hermes_agent/config.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
 
-**步骤：**
+已完成内容：
 
-1. 定义 approval policy。
-2. terminal 工具执行前判断危险命令。
-3. 文件写入前路径检查。
-4. per-session approval context。
-5. checkpoint 简化实现。
-6. 更新进度文档。
+1. 定义 `ToolExecutionContext`，携带 session/task/workspace/security policy。
+2. 在配置中新增 `security.approval_mode`、`security.yolo`、`security.workspace_root`，并在 `doctor` 中显示规范化结果。
+3. 定义 `CommandRisk`、`ApprovalDecision` 和 `check_command_approval()`。
+4. 定义 `PathDecision`、`check_read_path()`、`check_write_path()` 和 `resolve_workspace_path()`。
+5. 将 context 贯穿到 `AIAgent.run_conversation()`、`safe_handle_function_call()`、`handle_function_call()`。
+6. 在 `model_tools._preflight_tool_call()` 中预留 `terminal`、`read_file`、`write_file`、`patch` 的统一 preflight 入口。
 
-**验收：**
+Batch 1 验收：
 
-危险命令默认要求审批；审批状态不跨 session 泄漏。
+- `uv run python -m compileall -q src` 通过。
+- `doctor` 输出 security 配置。
+- `tools` / `call-tool echo` / `chat --tool-demo --show-messages` 既有行为保持可运行。
+- 命令策略：
+  - `echo hello` -> `allowed`
+  - `sudo reboot` -> `approval_required`
+  - `rm -rf /` -> `blocked`
+- 文件策略：
+  - `README.md` read -> `allowed`
+  - `.env` write -> `blocked`
+  - `.ssh/id_rsa` write -> `blocked`
+  - `.learn_hermes/config.yaml` write -> `blocked`
+
+**剩余批次：**
+
+- Batch 2：File Tools With Safety
+  - 接入 `read_file`、`write_file`、`patch` 的最小版本。
+  - 写前调用 `check_write_path()`。
+  - 暂不实现 fuzzy patch、外部修改检测、多文件 patch、LSP diagnostics 或 read dedup。
+- Batch 3：Terminal Local Backend
+  - 接入最小 `terminal` tool。
+  - 执行前调用 `check_command_approval()`。
+  - hardline block 永远不可被 `force`、`yolo` 或 `auto` 绕过。
+  - 暂不实现 Docker/SSH/Modal/Daytona backend、PTY、background process 或 streaming output。
+- Batch 4：Minimal Checkpoint
+  - 在文件修改和破坏性 terminal 命令执行前创建最小 checkpoint。
+  - checkpoint 是 agent 透明基础设施，不作为普通 tool 暴露。
+  - 暂不实现 Hermes 的完整 git object checkpoint store 或 `/rollback` gateway 命令。
 
 ## Phase 11：Gateway
 
