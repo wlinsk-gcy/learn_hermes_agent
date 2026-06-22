@@ -418,8 +418,12 @@ def run_tools() -> int:
 
 
 def run_call_tool(name: str, arguments: str) -> int:
+    config = load_config()
+    # Batch 1 已经把安全检查放进 model_tools.handle_function_call(..., context=...) 的 preflight 里。
+    # 之前的 call-tool 没传 context，所以手工调用会绕过统一 preflight；现在 CLI 手工验证和 agent tool calling 的安全路径一致。
+    tool_context = create_tool_execution_context(config)
     try:
-        result_json = handle_function_call(name, arguments)
+        result_json = handle_function_call(name, arguments, context=tool_context)
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
