@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from learn_hermes_agent.agent.file_safety import check_read_path
+from learn_hermes_agent.agent.file_safety import check_read_path, check_write_path
 from learn_hermes_agent.agent.tool_context import create_tool_execution_context
 from learn_hermes_agent.config import load_config
 from learn_hermes_agent.tools.registry import ToolEntry, ToolRegistry
@@ -63,6 +63,22 @@ READ_FILE_PARAMETERS: dict[str, Any] = {
         },
     },
     "required": ["path"],
+    "additionalProperties": False,
+}
+
+WRITE_FILE_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "Path to the file to write.",
+        },
+        "content": {
+            "type": "string",
+            "description": "Complete UTF-8 text content to write.",
+        },
+    },
+    "required": ["path", "content"],
     "additionalProperties": False,
 }
 
@@ -164,6 +180,38 @@ def read_file(arguments: dict[str, Any]) -> dict[str, object]:
         "returned_lines": len(selected),
         "truncated": start_index + limit < len(lines),
         "content": content,
+    }
+
+
+def write_file(arguments: dict[str, Any]) -> dict[str, object]:
+    path = arguments.get("path")
+    content = arguments.get("content")
+
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("write_file requires a non-empty string argument: path")
+    if not isinstance(content, str):
+        raise ValueError("write_file requires a string argument: content")
+
+    # model_tools 以后会在 dispatch 前做统一 preflight，但 handler 内部仍然再调用一次 check_write_path()，
+    # 避免有人绕过 handle_function_call() 直接调用 handler 时写入敏感路径。
+    context = create_tool_execution_context(load_config())
+    decision = check_write_path(path, context)
+    if not decision.allowed:
+        payload = decision.to_dict()
+        payload["error"] = decision.reason
+        return payload
+
+    resolved = Path(decision.resolved_path)
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+    resolved.write_text(content, encoding="utf-8")
+
+    bytes_written = len(content.encode("utf-8"))
+
+    return {
+        "path": path,
+        "resolved_path": str(resolved),
+        "bytes_written": bytes_written,
+        "files_modified": [str(resolved)],
     }
 
 
