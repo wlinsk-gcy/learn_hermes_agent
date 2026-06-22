@@ -224,3 +224,11 @@ def register_tools(registry: ToolRegistry) -> None:
             handler=read_file,
         )
     )
+    registry.register(
+        ToolEntry(
+            name="write_file",
+            description="Write complete UTF-8 text content to a workspace file.",
+            parameters=WRITE_FILE_PARAMETERS,
+            handler=write_file,
+        )
+    )
