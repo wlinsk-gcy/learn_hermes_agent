@@ -6,6 +6,7 @@ from typing import Any
 from learn_hermes_agent.agent.messages import ChatMessage, assistant_message, system_message, tool_message, user_message
 from learn_hermes_agent.agent.context_compressor import ContextCompressor
 from learn_hermes_agent.agent.iteration_budget import IterationBudget
+from learn_hermes_agent.agent.tool_context import ToolExecutionContext
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
@@ -30,7 +31,7 @@ class AIAgent:
         self.session_cached_tokens = 0
 
     def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None,
-                         system_prompt: str | None = None) -> list[ChatMessage]:
+                         system_prompt: str | None = None, tool_context: ToolExecutionContext | None = None,) -> list[ChatMessage]:
         self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
@@ -56,7 +57,7 @@ class AIAgent:
 
             for tool_call in tool_calls:
                 function_name, arguments, tool_call_id = self._parse_tool_call(tool_call)
-                result_json = safe_handle_function_call(function_name, arguments, registry=self.registry)
+                result_json = safe_handle_function_call(function_name, arguments, registry=self.registry, context=tool_context)
                 messages.append(tool_message(name=function_name, content=result_json, tool_call_id=tool_call_id))
 
         raise RuntimeError(

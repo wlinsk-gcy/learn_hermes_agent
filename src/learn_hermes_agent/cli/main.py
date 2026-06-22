@@ -11,6 +11,7 @@ from learn_hermes_agent.agent.core import AIAgent
 from learn_hermes_agent.agent.messages import ChatMessage
 from learn_hermes_agent.agent.prompt_builder import PromptBuilder
 from learn_hermes_agent.agent.context_compressor import CompressionConfig, ContextCompressor
+from learn_hermes_agent.agent.tool_context import create_tool_execution_context
 from learn_hermes_agent.cli.commands import format_help_lines, parse_slash_command
 from learn_hermes_agent.config import (
     get_app_home,
@@ -240,9 +241,10 @@ def run_chat(message: str | None, *, tool_demo: bool = False, show_messages: boo
     system_prompt = build_system_prompt()
     store = get_session_store()
     session_id = store.create_session(title=message[:80], system_prompt=system_prompt)
+    tool_context = create_tool_execution_context(config, session_id=session_id)
 
     try:
-        messages = agent.run_conversation(message, system_prompt=system_prompt)
+        messages = agent.run_conversation(message, system_prompt=system_prompt, tool_context=tool_context)
     except (RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -359,10 +361,14 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
 
         before_count = len(history)
         try:
+            # Hermes 的关键设计不是让每个工具各自判断安全，而是在 handler 执行前有统一 preflight。
+            # 这里先把 context 贯穿到分发层；因为 Batch 1 不注册 terminal/read_file/write_file/patch，现有工具行为应该保持不变。
+            tool_context = create_tool_execution_context(config, session_id=session_id)
             messages = agent.run_conversation(
                 user_input,
                 history=history,
                 system_prompt=system_prompt,
+                tool_context=tool_context,
             )
         except (RuntimeError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
