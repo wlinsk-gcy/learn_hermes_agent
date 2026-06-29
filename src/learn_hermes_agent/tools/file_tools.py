@@ -192,7 +192,8 @@ def read_file(arguments: dict[str, Any]) -> dict[str, object]:
     start_index = offset - 1
     selected = lines[start_index:start_index + limit]
     numbered = [
-        f"{line_number}: {line}"
+        # |是展示分隔符，不是文件真实内容，会被re过滤掉
+        f"{line_number}|{line}"
         for line_number, line in enumerate(selected, start=offset)
     ]
     content = "\n".join(numbered)
@@ -234,6 +235,16 @@ def write_file(arguments: dict[str, Any]) -> dict[str, object]:
         payload = decision.to_dict()
         payload["error"] = decision.reason
         return payload
+    # 先做路径判断（较敏感）再检查内容形状
+    if _looks_like_read_file_line_numbered_content(content):
+        return {
+            "error": (
+                "refusing to write read_file display text as file content; "
+                "remove line-number prefixes before writing"
+            ),
+            "path": path,
+            "resolved_path": decision.resolved_path,
+        }
 
     resolved = Path(decision.resolved_path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
