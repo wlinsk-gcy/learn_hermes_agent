@@ -481,3 +481,147 @@ class CheckpointManager:
             self._prune(store, working_dir, ref)
 
         return True
+
+    def list_checkpoints(
+            self,
+            working_dir: str,
+    ) -> list[dict[str, object]]:
+        normalized = str(_normalize_path(working_dir))
+        store = _store_path(self.checkpoint_base)
+
+        if not (store / "HEAD").exists():
+            return []
+
+        ref = _ref_name(_project_hash(normalized))
+
+        ok, output, _ = _run_git(
+            [
+                "log",
+                ref,
+                "--format=%H|%h|%aI|%s",
+                "-n",
+                str(self.max_snapshots),
+            ],
+            store,
+            normalized,
+            allowed_returncodes={128},
+        )
+        if not ok or not output:
+            return []
+
+        checkpoints: list[dict[str, object]] = []
+
+        for line in output.splitlines():
+            parts = line.split("|", 3)
+            if len(parts) != 4:
+                continue
+
+            checkpoints.append(
+                {
+                    "hash": parts[0],
+                    "short_hash": parts[1],
+                    "timestamp": parts[2],
+                    "reason": parts[3],
+                }
+            )
+
+        return checkpoints
+
+    def _prune(
+            self,
+            store: Path,
+            working_dir: str,
+            ref: str,
+    ) -> None:
+        ok_count, count_output, _ = _run_git(
+            ["rev-list", "--count", ref],
+            store,
+            working_dir,
+            allowed_returncodes={128},
+        )
+        if not ok_count:
+            return
+
+        try:
+            count = int(count_output)
+        except ValueError:
+            return
+
+        if count <= self.max_snapshots:
+            return
+
+        ok_list, history, _ = _run_git(
+            ["rev-list", "--reverse", ref],
+            store,
+            working_dir,
+        )
+        if not ok_list or not history:
+            return
+        # 取最新的 max_snapshots 个 checkpoint。
+        keep = history.splitlines()[-self.max_snapshots:]
+        new_parent: str | None = None
+        # 保留每个 checkpoint 的 tree 和 reason。
+        for commit_hash in keep:
+            ok_tree, tree_hash, _ = _run_git(
+                [
+                    "rev-parse",
+                    f"{commit_hash}^{{tree}}",
+                ],
+                store,
+                working_dir,
+            )
+            ok_reason, reason, _ = _run_git(
+                [
+                    "log",
+                    "--format=%s",
+                    "-1",
+                    commit_hash,
+                ],
+                store,
+                working_dir,
+            )
+
+            if not ok_tree or not tree_hash:
+                return
+
+            args = [
+                "commit-tree",
+                tree_hash,
+                "-m",
+                reason if ok_reason and reason else "checkpoint",
+                "--no-gpg-sign",
+            ]
+
+            if new_parent is not None:
+                args[2:2] = ["-p", new_parent]
+            # 重建一条较短的 commit 链
+            ok_commit, rewritten, _ = _run_git(
+                args,
+                store,
+                working_dir,
+            )
+            if not ok_commit or not rewritten:
+                return
+
+            new_parent = rewritten
+
+        if new_parent is None:
+            return
+        # 将 workspace ref 指向新链
+        _run_git(
+            ["update-ref", ref, new_parent],
+            store,
+            working_dir,
+        )
+        # 清理不可达的旧对象
+        _run_git(
+            ["reflog", "expire", "--expire=now", "--all"],
+            store,
+            working_dir,
+        )
+        _run_git(
+            ["gc", "--prune=now", "--quiet"],
+            store,
+            working_dir,
+        )
+        _repair_store_dirs(store)
