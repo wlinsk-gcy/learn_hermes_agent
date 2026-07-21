@@ -12,6 +12,8 @@ from learn_hermes_agent.tools.registry import ToolEntry, ToolRegistry
 DEFAULT_READ_LIMIT = 500
 MAX_READ_LIMIT = 2000
 MAX_READ_CHARS = 100_000
+DEFAULT_SEARCH_LIMIT = 50
+MAX_SEARCH_LIMIT = 200
 # 识别read_file工具行号的展示文本正则，判断是不是 数字| 开头，\s*允许空格
 READ_FILE_LINE_RE = re.compile(r"^\s*(\d+)\|")
 
@@ -399,6 +401,104 @@ def patch(arguments: dict[str, Any]) -> dict[str, object]:
         "bytes_written": bytes_written,
         "replacements": replacements,
         "files_modified": [str(resolved)],
+    }
+
+
+def search_files(arguments: dict[str, Any]) -> dict[str, object]:
+    pattern = arguments.get("pattern")
+    path = arguments.get("path", ".")
+    limit = _normalize_int(
+        arguments.get("limit"),
+        name="limit",
+        default=DEFAULT_SEARCH_LIMIT,
+        minimum=1,
+        maximum=MAX_SEARCH_LIMIT,
+    )
+
+    if not isinstance(pattern, str) or not pattern:
+        raise ValueError("search_files requires a non-empty string argument: pattern")
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("search_files requires a non-empty string argument: path")
+
+    try:
+        regex = re.compile(pattern)
+    except re.error as exc:
+        return {
+            "error": f"invalid regex pattern: {exc}",
+            "pattern": pattern,
+            "path": path,
+        }
+
+    context = create_tool_execution_context(load_config())
+    decision = check_read_path(path, context)
+    if not decision.allowed:
+        payload = decision.to_dict()
+        payload["error"] = decision.reason
+        return payload
+
+    resolved = Path(decision.resolved_path)
+    if not resolved.exists():
+        return {
+            "error": "path not found",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    if resolved.is_file():
+        candidates = [resolved]
+    else:
+        candidates = [
+            candidate
+            for candidate in resolved.rglob("*")
+            if candidate.is_file()
+        ]
+
+    matches: list[dict[str, object]] = []
+    searched_files = 0
+    skipped_files = 0
+
+    for candidate in sorted(candidates):
+        if _is_binary_path(candidate):
+            skipped_files += 1
+            continue
+
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except (UnicodeDecodeError, OSError):
+            skipped_files += 1
+            continue
+
+        searched_files += 1
+        for line_number, line in enumerate(lines, start=1):
+            if regex.search(line):
+                matches.append(
+                    {
+                        "path": str(candidate),
+                        "line_number": line_number,
+                        "line": line,
+                    }
+                )
+                if len(matches) >= limit:
+                    return {
+                        "pattern": pattern,
+                        "path": path,
+                        "resolved_path": str(resolved),
+                        "matches": matches,
+                        "match_count": len(matches),
+                        "searched_files": searched_files,
+                        "skipped_files": skipped_files,
+                        "truncated": True,
+                    }
+
+    return {
+        "pattern": pattern,
+        "path": path,
+        "resolved_path": str(resolved),
+        "matches": matches,
+        "match_count": len(matches),
+        "searched_files": searched_files,
+        "skipped_files": skipped_files,
+        "truncated": False,
     }
 
 
