@@ -71,7 +71,7 @@ model_tools.py
 
 - `ToolEntry.toolset`，提供兼容默认值。
 - `ToolEntry.check_fn`，允许工具声明轻量可用性检查。
-- `ToolRegistry.generation`，每次注册或移除工具时递增。
+- `ToolRegistry.generation`，本批在每次成功注册或覆盖工具时递增；移除工具的接口推迟到动态工具阶段。
 - 按 toolset 查询工具和可用工具定义的最小接口。
 
 暂不实现：
