@@ -275,6 +275,35 @@ def _repair_store_dirs(store: Path) -> None:
         (store / relative).mkdir(parents=True, exist_ok=True)
 
 
+def _validate_file_path(
+        file_path: str,
+        working_dir: str,
+) -> str | None:
+    """
+    阻止三类危险输入
+    - 空路径
+    - 绝对路径，例如 D:/other/secret.txt
+    - 目录穿越，例如 ../other/secret.txt
+    """
+    if not file_path or not file_path.strip():
+        return "restore file path must not be empty"
+
+    candidate = Path(file_path)
+
+    if candidate.is_absolute():
+        return "restore file path must be relative"
+
+    root = _normalize_path(working_dir)
+    resolved = (root / candidate).resolve()
+
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return "restore file path escapes the working directory"
+
+    return None
+
+
 class CheckpointManager:
     def __init__(
             self,
@@ -481,6 +510,182 @@ class CheckpointManager:
             self._prune(store, working_dir, ref)
 
         return True
+
+    def get_working_dir_for_path(
+            self,
+            file_path: str,
+            *,
+            boundary: str | None = None,
+    ) -> str:
+        """最新版 Hermes 会向上寻找项目 marker；学习版增加 boundary，确保搜索不会越过安全 workspace。这是有意的安全收紧。"""
+        path = _normalize_path(file_path)
+        candidate = path if path.is_dir() else path.parent
+
+        boundary_path = (
+            _normalize_path(boundary)
+            if boundary
+            else None
+        )
+
+        if boundary_path is not None:
+            try:
+                candidate.relative_to(boundary_path)
+            except ValueError:
+                return str(boundary_path)
+
+        markers = {
+            ".git",
+            ".hg",
+            "pyproject.toml",
+            "package.json",
+            "Cargo.toml",
+            "go.mod",
+            "pom.xml",
+            "Makefile",
+        }
+
+        current = candidate
+
+        while True:
+            if any(
+                    (current / marker).exists()
+                    for marker in markers
+            ):
+                # 找到最近的项目 marker 时，返回对应项目根目录
+                return str(current)
+
+            if (
+                    boundary_path is not None
+                    and current == boundary_path
+            ):
+                # 没找到 marker 且提供了 boundary，返回 boundary
+                return str(boundary_path)
+
+            if current == current.parent:
+                break
+            # 没有 boundary 时，回退到目标文件的父目录
+            parent = current.parent
+
+            if boundary_path is not None:
+                try:
+                    parent.relative_to(boundary_path)
+                except ValueError:
+                    # 目标在 boundary 外时，不继续向外搜索，直接返回 boundary
+                    return str(boundary_path)
+
+            current = parent
+
+        return str(boundary_path or candidate)
+
+    def restore(
+            self,
+            working_dir: str,
+            commit_hash: str,
+            file_path: str | None = None,
+    ) -> dict[str, object]:
+        """
+        学习版比最新版 Hermes 多一层保护：merge-base --is-ancestor 确认 checkpoint 属于当前 workspace。
+        共享 store 中即使存在其他 workspace 的 commit，也不能拿来恢复当前目录。
+
+        本 Batch 不使用 git clean，因此不会删除 checkpoint 后新建的文件
+        """
+        # 先校验 commit hash 和文件路径
+        hash_error = _validate_commit_hash(commit_hash)
+        if hash_error is not None:
+            return {
+                "success": False,
+                "error": hash_error,
+            }
+
+        normalized = str(_normalize_path(working_dir))
+
+        if file_path is not None:
+            path_error = _validate_file_path(
+                file_path,
+                normalized,
+            )
+            if path_error is not None:
+                return {
+                    "success": False,
+                    "error": path_error,
+                }
+
+        store = _store_path(self.checkpoint_base)
+
+        if not (store / "HEAD").exists():
+            return {
+                "success": False,
+                "error": "No checkpoints exist for this directory",
+            }
+
+        ref = _ref_name(_project_hash(normalized))
+        # 确认 commit 是当前 workspace ref 的祖先
+        belongs, _, _ = _run_git(
+            [
+                "merge-base",
+                "--is-ancestor",
+                commit_hash,
+                ref,
+            ],
+            store,
+            normalized,
+            allowed_returncodes={1, 128},
+        )
+        if not belongs:
+            return {
+                "success": False,
+                "error": (
+                    "Checkpoint does not belong to this directory"
+                ),
+            }
+        # 恢复前自动建立 pre-rollback 快照，允许将来撤销恢复。
+        self._take(
+            normalized,
+            (
+                "pre-rollback snapshot "
+                f"(restoring to {commit_hash[:8]})"
+            ),
+            prune=False,
+        )
+
+        project_hash = _project_hash(normalized)
+        index_file = _index_path(store, project_hash)
+
+        restore_target = (
+            Path(file_path).as_posix()
+            if file_path
+            else "."
+        )
+        #  -- 明确结束 Git 参数，避免文件路径被解释成选项。
+        ok, _, error = _run_git(
+            [
+                "checkout",
+                commit_hash,
+                "--",
+                restore_target,
+            ],
+            store,
+            normalized,
+            index_file=index_file,
+        )
+        if not ok:
+            return {
+                "success": False,
+                "error": f"Restore failed: {error}",
+            }
+
+        self._prune(store, normalized, ref)
+
+        result: dict[str, object] = {
+            "success": True,
+            "restored_to": commit_hash[:8],
+            "directory": normalized,
+        }
+
+        if file_path is not None:
+            result["file"] = file_path
+
+        return result
 
     def list_checkpoints(
             self,
