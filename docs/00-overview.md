@@ -74,12 +74,12 @@ CLI / Gateway / ACP / TUI
 - Phase 9：最小 Provider Runtime、OpenAI-compatible provider、规范化 response 和 fallback chain。
 - Phase 10 Batch 1：ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
 - Phase 10 Batch 2A 至 2E：`read_file`、`write_file`、文件工具加固、`patch` 和 `search_files`。
+- Phase 10 Batch 3：ToolRegistry v2，增加 `toolset`、`check_fn`、registry `generation`、可用定义过滤和 toolset 查询。
 
-下一阶段是 Phase 10 Batch 3：ToolRegistry v2。目标是在保持现有工具注册兼容的前提下，增加最小 `toolset`、`check_fn` 和 registry `generation`，再进入独立 ToolExecutor：
+下一阶段是 Phase 10 Batch 4：Minimal ToolExecutor。目标是把参数解析、安全 preflight、handler dispatch 和结构化错误从 `model_tools.py` 收口到独立执行层，同时保留兼容包装入口：
 
 ```text
-ToolRegistry v2
-  -> Minimal ToolExecutor
+Minimal ToolExecutor
   -> Minimal Checkpoint
   -> Local Foreground Terminal
 ```
@@ -95,3 +95,5 @@ ToolRegistry v2
 - `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`：实施计划。
 - `docs/plans/2026-07-21-phase-10-post-file-tools-route-design.md`：文件工具完成后的架构路线。
 - `docs/plans/2026-07-21-phase-10-batch-2e-search-files-closeout-plan.md`：Batch 2E 收尾计划。
+- `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-design.md`：Batch 3 Registry v2 设计。
+- `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-plan.md`：Batch 3 实施计划。

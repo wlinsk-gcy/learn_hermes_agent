@@ -10,12 +10,11 @@
 2. 我们复刻哪些接口和行为？
 3. 如何不用大规模测试也能观察它是正确的？
 
-当前进度截至 2026-06-04：
+当前进度截至 2026-07-21：
 
-- Phase 0 已完成。
-- Phase 1 已完成最小版。
-- Phase 2 已完成最小版。
-- Phase 3 是下一步。
+- Phase 0 至 Phase 9 已完成当前路线中的最小版本。
+- Phase 10 Batch 1、Batch 2A 至 2E、Batch 3 已完成。
+- 下一步是 Phase 10 Batch 4：Minimal ToolExecutor。
 
 ## Phase 0：项目基础与约定
 
@@ -96,7 +95,7 @@
 
 ## Phase 3：工具调用循环
 
-状态：下一步。
+状态：已完成最小版。
 
 目标：实现真正的 tool calling agent loop。
 
@@ -272,7 +271,7 @@
 
 ## Phase 10：安全、审批和执行环境
 
-状态：Batch 1 Safety / Approval Primitives 与 Batch 2 File Tools With Safety 已完成；下一步是 Batch 3 ToolRegistry v2。
+状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety 与 Batch 3 ToolRegistry v2 已完成；下一步是 Batch 4 Minimal ToolExecutor。
 
 目标：复刻 Hermes 工具安全边界。
 
@@ -284,13 +283,18 @@
 - Batch 2C：阻止把 `read_file` 行号展示文本直接写回文件。
 - Batch 2D：单文件精确字符串替换版 `patch`。
 - Batch 2E：最小 `search_files`，支持正则、结果限制、统一 preflight 和候选文件级安全过滤。
+- Batch 3：ToolRegistry v2：
+  - `ToolEntry` 增加兼容默认值 `toolset="other"` 和可选 `check_fn`。
+  - `ToolRegistry` 增加只读 `generation`，成功注册或覆盖后递增。
+  - `get_definitions()` 支持按名称和 `check_fn` 过滤；异常采用 fail-closed。
+  - 增加 toolset 查询，内置工具归入 `file`、`memory`、`skills` 和 `other`。
+  - `AIAgent` 与 `model_tools.get_tool_definitions()` 已迁移到新主接口。
 
 后续顺序：
 
-1. Batch 3：ToolRegistry v2，补充 `toolset`、`check_fn` 和 `generation` 的最小兼容实现。
-2. Batch 4：最小 ToolExecutor，集中参数解析、preflight、dispatch 和结构化错误。
-3. Batch 5：最小 checkpoint。
-4. Batch 6：local foreground terminal。
+1. Batch 4：最小 ToolExecutor，集中参数解析、preflight、dispatch 和结构化错误。
+2. Batch 5：最小 checkpoint。
+3. Batch 6：local foreground terminal。
 
 暂未实现：
 
@@ -308,6 +312,7 @@
 
 - 当前文件工具均通过统一路径策略，敏感路径和 workspace 外路径被阻断。
 - `read_file`、`write_file`、`patch`、`search_files` 可通过 registry/dispatch 链路调用。
+- Registry 可按 toolset 和可用性生成稳定、过滤后的模型工具定义。
 - 后续 terminal 接入时，hardline 命令必须继续优先于 yolo/auto 被阻断。
 
 ## Phase 11：Gateway

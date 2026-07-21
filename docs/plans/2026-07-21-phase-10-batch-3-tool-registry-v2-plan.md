@@ -404,7 +404,7 @@ print("task-5-ok")
 ```powershell
 uv run python -m compileall -q src
 uv run learn-hermes-agent tools
-uv run learn-hermes-agent call-tool echo '{"text":"registry-v2"}'
+uv run learn-hermes-agent call-tool echo '{\"text\":\"registry-v2\"}'
 uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 ```
 

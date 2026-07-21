@@ -385,7 +385,7 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 10：Security / Approval / Execution
 
-**状态：Batch 1 与 Batch 2A 至 2E 已完成；下一步为 Batch 3 ToolRegistry v2**
+**状态：Batch 1、Batch 2A 至 2E、Batch 3 已完成；下一步为 Batch 4 Minimal ToolExecutor**
 
 **目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、terminal 和 checkpoint。
 
@@ -435,12 +435,28 @@ Batch 1 验收：
 
 Batch 2 暂未实现 fuzzy/V4A patch、外部修改检测、多文件 patch、LSP diagnostics、read dedup、search pagination、file glob、file-name search 或 ripgrep backend。
 
+**Batch 3：ToolRegistry v2（已完成）**
+
+- `ToolEntry` 增加兼容默认值 `toolset="other"` 和可选 `check_fn`。
+- `ToolRegistry.generation` 从 0 开始，每次成功注册或覆盖后递增；失败的重复注册不递增。
+- `get_definitions(tool_names=...)` 支持名称子集和可用性过滤。
+- `check_fn=False` 或抛出异常时不向模型暴露工具；异常记录 warning，一个检查失败不影响其他工具。
+- 同一次定义查询中，共享同一个 `check_fn` 的工具只检查一次；未增加跨调用 TTL cache。
+- 增加 toolset 名称、toolset 内工具和单工具归属查询。
+- 内置工具分类为 `file`、`memory`、`skills` 和默认 `other`。
+- `AIAgent` 与 `model_tools.get_tool_definitions()` 已迁移到 `get_definitions()`；`list_definitions()` 暂保留为兼容包装。
+
+Batch 3 验收：
+
+- `uv run python -m compileall -q src` 通过。
+- `tools` 仍输出八个内置工具定义。
+- `call-tool echo` 和 `chat --tool-demo --show-messages` 通过。
+- generation、可用性过滤、共享检查缓存、toolset 查询和 file 子集 schema 的轻量不变量通过。
+
+Batch 3 暂未实现 deregister、check_fn TTL/failure grace cache、dynamic schema overrides、MCP/plugin ownership、toolset alias、执行范围拦截或异步 dispatch。
+
 **后续批次：**
 
-- Batch 3：ToolRegistry v2
-  - 最小增加 `toolset`、`check_fn` 和 `generation`。
-  - 保持现有 `ToolEntry(...)` 与工具注册方式兼容。
-  - 暂不实现 TTL cache、dynamic schema overrides、MCP ownership 或 toolset alias。
 - Batch 4：Minimal ToolExecutor
   - 从 `model_tools.py` 提取参数解析、工具存在性检查、安全 preflight、handler dispatch 和结构化错误。
   - `model_tools.handle_function_call()` 保留为兼容包装入口。

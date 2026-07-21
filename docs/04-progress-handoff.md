@@ -92,12 +92,13 @@
 - Phase 9：已完成最小 Provider Runtime、OpenAI-compatible provider、规范化 response、usage 和 fallback chain。
 - Phase 10 Batch 1：已完成 ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
 - Phase 10 Batch 2A 至 2E：已完成 `read_file`、`write_file`、文件工具加固、精确替换版 `patch` 和最小 `search_files`。
+- Phase 10 Batch 3：已完成 ToolRegistry v2，包括 toolset、check_fn、generation、可用定义过滤和 toolset 查询。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现 ToolRegistry v2、独立 ToolExecutor、checkpoint、terminal、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现独立 ToolExecutor、checkpoint、terminal、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -1687,6 +1688,94 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 ### 下一步
 
 进入 Phase 10 Batch 3：ToolRegistry v2。先对齐最新版 `tools/registry.py`，只实现带兼容默认值的 `toolset`、`check_fn` 和 `generation`；不开始 ToolExecutor、checkpoint 或 terminal。
+
+## 2026-07-21 Phase 10 Batch 3 ToolRegistry v2 进度更新
+
+### 本次目标
+
+以兼容方式升级工具注册元数据和模型定义生成入口，为下一批独立 ToolExecutor 建立稳定边界，不改变当前工具执行链路。
+
+### 已完成
+
+- `ToolEntry` 增加 `toolset: str = "other"` 和可选 `check_fn`。
+- `ToolRegistry` 增加只读 `generation`：初始为 0，成功注册或覆盖后递增，失败的重复注册不递增。
+- 新增 `get_definitions(tool_names=None)`：
+  - 支持按工具名称集合过滤。
+  - `check_fn=None` 的工具默认可用。
+  - `check_fn=False` 或检查异常时不向模型暴露工具。
+  - 检查异常记录 warning，不中断其他定义生成。
+  - 同一次查询中，共享同一个 `check_fn` 的工具只检查一次。
+- 保留 `list_definitions()` 作为兼容包装入口。
+- 新增 toolset 查询：已注册分类、分类内工具名称和单工具归属。
+- 内置工具分类：
+  - `file`：`read_file`、`write_file`、`patch`、`search_files`
+  - `memory`：`memory`
+  - `skills`：`skills_list`、`skill_view`
+  - `other`：`echo`
+- `model_tools.get_tool_definitions()` 支持可选 `tool_names`。
+- `AIAgent` 改为直接调用 `registry.get_definitions()`。
+
+### 修改文件
+
+- `src/learn_hermes_agent/tools/registry.py`
+- `src/learn_hermes_agent/tools/file_tools.py`
+- `src/learn_hermes_agent/tools/memory.py`
+- `src/learn_hermes_agent/tools/skills.py`
+- `src/learn_hermes_agent/model_tools.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-07-21-phase-10-post-file-tools-route-design.md`
+- `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-design.md`
+- `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-plan.md`
+
+### 对照的 Hermes 源码
+
+- `tools/registry.py`
+  - `ToolEntry.toolset`、`check_fn` 和 registry generation。
+  - 按工具名称和可用性生成模型工具定义。
+  - toolset 元数据与查询意图。
+- `agent/tool_executor.py`
+  - 确认 `check_fn` 不是审批或执行权限边界。
+  - 模型只能执行本轮暴露工具的范围限制留到下一批 executor。
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent call-tool echo '{\"text\":\"registry-v2\"}'
+uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
+```
+
+另用内联断言验证：
+
+- 八个内置工具全部可生成 schema。
+- `generation == len(registry.names()) == 8`。
+- 可用、不可用、检查异常三类工具得到正确过滤。
+- 检查异常记录 warning 后继续生成其他定义。
+- 两个工具共享同一 `check_fn` 时，一次查询只调用一次。
+- toolset 去重、排序、未知值和内置工具分类正确。
+- file toolset 子集只返回 `patch`、`read_file`、`search_files`、`write_file`。
+- `list_definitions()` 与 `get_definitions()` 的兼容结果一致。
+
+实际结果：`compileall` 和全部 CLI 退出码为 0，内联总体不变量输出 `batch-3-ok`。Windows 外部进程传递 JSON 时需要保留反斜杠转义，否则双引号会在参数解析阶段被移除。
+
+### 设计结论
+
+- `toolset` 只是分类元数据，不是权限边界。
+- `check_fn` 只判断工具当前环境是否可用，不负责审批、安全 preflight 或直接执行限制。
+- 不可用工具仍保留在 Registry 中，并可被 `get()` 找到；Batch 4 必须负责限制模型只能调用本轮暴露的工具。
+- generation 先建立 Registry 结构变更协议，本批不驱动长期缓存。
+- 本批不实现 deregister、TTL/failure grace cache、dynamic schema、插件所有权、异步 dispatch、checkpoint 或 terminal。
+
+### 下一步
+
+进入 Phase 10 Batch 4：Minimal ToolExecutor。开始设计前重新对齐最新版 `agent/tool_executor.py` 和当前 `model_tools.py`，只提取参数解析、工具存在性检查、模型调用范围、安全 preflight、handler dispatch 和结构化错误；不开始 checkpoint 或 terminal。
 
 ## 后续进度模板
 
