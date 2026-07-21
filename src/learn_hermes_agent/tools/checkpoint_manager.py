@@ -254,6 +254,7 @@ def _init_store(store: Path, working_dir: str) -> str | None:
 
     return None
 
+
 # 修复 Git GC 可能删除的必要空目录
 def _repair_store_dirs(store: Path) -> None:
     """
@@ -272,3 +273,211 @@ def _repair_store_dirs(store: Path) -> None:
     # branches：bare Git 仓库的兼容目录。
     for relative in ("refs/heads", "branches"):
         (store / relative).mkdir(parents=True, exist_ok=True)
+
+
+class CheckpointManager:
+    def __init__(
+            self,
+            *,
+            enabled: bool = False,
+            max_snapshots: int = 20,
+            checkpoint_base: Path | None = None,
+    ) -> None:
+        self.enabled = enabled
+        self.max_snapshots = max(1, int(max_snapshots))
+        self.checkpoint_base = _normalize_path(
+            checkpoint_base or get_checkpoints_dir_path()
+        )
+
+        self._checkpointed_dirs: set[str] = set()
+        self._git_available: bool | None = None
+
+    def new_turn(self) -> None:
+        """清除去重状态"""
+        self._checkpointed_dirs.clear()
+
+    def ensure_checkpoint(
+            self,
+            working_dir: str,
+            reason: str = "auto",
+    ) -> bool:
+        if not self.enabled:
+            return False
+        # _git_available 只探测一次，避免每次写文件都调用 shutil.which()。
+        if self._git_available is None:
+            self._git_available = shutil.which("git") is not None
+
+        if not self._git_available:
+            logger.debug(
+                "checkpoints disabled: git executable not found"
+            )
+            return False
+
+        path = _normalize_path(working_dir)
+        filesystem_root = Path(path.anchor).resolve()
+        # 禁止对磁盘根目录和用户主目录建立快照
+        if path in {filesystem_root, Path.home().resolve()}:
+            logger.debug(
+                "checkpoint skipped for overly broad path: %s",
+                path,
+            )
+            return False
+
+        normalized = str(path)
+        # 同一个 Agent iteration 内，同一 workspace 最多尝试一次
+        if normalized in self._checkpointed_dirs:
+            return False
+
+        self._checkpointed_dirs.add(normalized)
+
+        try:
+            # 即使失败也不会阻止文件工具继续执行，即 fail-open。
+            return self._take(normalized, reason)
+        except Exception as exc:
+            logger.debug(
+                "checkpoint failed (non-fatal): %s",
+                exc,
+            )
+            return False
+
+    def _take(
+            self,
+            working_dir: str,
+            reason: str,
+            *,
+            prune: bool = True,
+    ) -> bool:
+        store = _store_path(self.checkpoint_base)
+        # 初始化store
+        init_error = _init_store(store, working_dir)
+        if init_error is not None:
+            logger.debug(init_error)
+            return False
+        # 读取 workspace 当前 ref
+        project_hash = _project_hash(working_dir)
+        index_file = _index_path(store, project_hash)
+        ref = _ref_name(project_hash)
+        index_file.parent.mkdir(parents=True, exist_ok=True)
+        # 用旧 commit 初始化独立 index
+        ok_ref, ref_commit, _ = _run_git(
+            [
+                "rev-parse",
+                "--verify",
+                f"{ref}^{{commit}}",
+            ],
+            store,
+            working_dir,
+            allowed_returncodes={128},
+        )
+        has_ref = ok_ref and bool(ref_commit)
+
+        if has_ref:
+            _run_git(
+                ["read-tree", ref_commit],
+                store,
+                working_dir,
+                index_file=index_file,
+                allowed_returncodes={128},
+            )
+        elif index_file.exists():
+            index_file.unlink()
+        # git add -A
+        ok_add, _, add_error = _run_git(
+            ["add", "-A"],
+            store,
+            working_dir,
+            index_file=index_file,
+        )
+        if not ok_add:
+            logger.debug(
+                "checkpoint git add failed: %s",
+                add_error,
+            )
+            return False
+        # 检查是否有变化
+        if has_ref:
+            no_changes, _, _ = _run_git(
+                [
+                    "diff-index",
+                    "--cached",
+                    "--quiet",
+                    ref_commit,
+                ],
+                store,
+                working_dir,
+                index_file=index_file,
+                allowed_returncodes={1},
+            )
+            if no_changes:
+                return False
+        else:
+            ok_files, files, _ = _run_git(
+                ["ls-files", "--cached"],
+                store,
+                working_dir,
+                index_file=index_file,
+            )
+            if ok_files and not files:
+                return False
+        # write-tree
+        ok_tree, tree_hash, tree_error = _run_git(
+            ["write-tree"],
+            store,
+            working_dir,
+            index_file=index_file,
+        )
+        if not ok_tree or not tree_hash:
+            logger.debug(
+                "checkpoint write-tree failed: %s",
+                tree_error,
+            )
+            return False
+        # commit-tree
+        commit_args = [
+            "commit-tree",
+            tree_hash,
+            "-m",
+            reason,
+            "--no-gpg-sign",
+        ]
+
+        if has_ref:
+            commit_args[2:2] = ["-p", ref_commit]
+
+        ok_commit, commit_hash, commit_error = _run_git(
+            commit_args,
+            store,
+            working_dir,
+            index_file=index_file,
+        )
+        if not ok_commit or not commit_hash:
+            logger.debug(
+                "checkpoint commit-tree failed: %s",
+                commit_error,
+            )
+            return False
+        # update-ref
+        update_args = [
+            "update-ref",
+            ref,
+            commit_hash,
+        ]
+        if has_ref:
+            update_args.append(ref_commit)
+
+        ok_update, _, update_error = _run_git(
+            update_args,
+            store,
+            working_dir,
+        )
+        if not ok_update:
+            logger.debug(
+                "checkpoint update-ref failed: %s",
+                update_error,
+            )
+            return False
+        # 裁剪旧 checkpoint
+        if prune:
+            self._prune(store, working_dir, ref)
+
+        return True
