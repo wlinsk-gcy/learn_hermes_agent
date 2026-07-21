@@ -69,6 +69,7 @@ def register_tools(registry: ToolRegistry) -> None:
             description="List available skills with minimal metadata.",
             parameters=SKILLS_LIST_PARAMETERS,
             handler=skills_list,
+            toolset="skills",
         )
     )
     registry.register(
@@ -77,5 +78,6 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Load a skill's full instructions or a linked file.",
             parameters=SKILL_VIEW_PARAMETERS,
             handler=skill_view,
+            toolset="skills",
         )
     )

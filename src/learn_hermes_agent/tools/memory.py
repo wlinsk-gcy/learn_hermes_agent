@@ -69,5 +69,6 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Read and update persistent user or project memory.",
             parameters=MEMORY_PARAMETERS,
             handler=memory,
+            toolset="memory",
         )
     )

@@ -513,6 +513,7 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Read a UTF-8 text file with line numbers and pagination.",
             parameters=READ_FILE_PARAMETERS,
             handler=read_file,
+            toolset="file",
         )
     )
     registry.register(
@@ -521,6 +522,7 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Write complete UTF-8 text content to a workspace file.",
             parameters=WRITE_FILE_PARAMETERS,
             handler=write_file,
+            toolset="file",
         )
     )
     registry.register(
@@ -529,6 +531,7 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Patch a UTF-8 workspace file by exact string replacement.",
             parameters=PATCH_PARAMETERS,
             handler=patch,
+            toolset="file",
         )
     )
     registry.register(
@@ -537,5 +540,6 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Search UTF-8 workspace files by regex pattern.",
             parameters=SEARCH_FILES_PARAMETERS,
             handler=search_files,
+            toolset="file",
         )
     )
