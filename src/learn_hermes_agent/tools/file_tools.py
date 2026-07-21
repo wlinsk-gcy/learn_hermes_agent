@@ -110,6 +110,30 @@ PATCH_PARAMETERS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+SEARCH_FILES_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "pattern": {
+            "type": "string",
+            "description": "Regex pattern to search for in UTF-8 text files.",
+        },
+        "path": {
+            "type": "string",
+            "description": "Directory or file to search in.",
+            "default": ".",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "Maximum number of matches to return.",
+            "default": 50,
+            "minimum": 1,
+            "maximum": 200,
+        },
+    },
+    "required": ["pattern"],
+    "additionalProperties": False,
+}
+
 
 def _normalize_int(
         value: object,
