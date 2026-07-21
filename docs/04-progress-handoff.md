@@ -93,12 +93,13 @@
 - Phase 10 Batch 1：已完成 ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
 - Phase 10 Batch 2A 至 2E：已完成 `read_file`、`write_file`、文件工具加固、精确替换版 `patch` 和最小 `search_files`。
 - Phase 10 Batch 3：已完成 ToolRegistry v2，包括 toolset、check_fn、generation、可用定义过滤和 toolset 查询。
+- Phase 10 Batch 4：已完成 Minimal ToolExecutor，包括 Provider definitions 范围快照、模型参数解析、顺序执行和 tool result 追加。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现独立 ToolExecutor、checkpoint、terminal、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现 checkpoint、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -1776,6 +1777,77 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 ### 下一步
 
 进入 Phase 10 Batch 4：Minimal ToolExecutor。最新源码对齐后采用 Hermes 的模块级顺序执行函数结构：AIAgent 从实际 definitions 形成 `valid_tool_names`，executor 负责模型范围检查、参数解析、顺序执行和 tool result 追加，`model_tools` 继续保留 registry dispatch 与现有安全 preflight；不开始 checkpoint 或 terminal。
+
+## 2026-07-21 Phase 10 Batch 4 Minimal ToolExecutor 进度更新
+
+### 本次目标
+
+按最新版 Hermes 的模块级执行器结构，从 `AIAgent` 提取最小顺序 tool-call 编排，并关闭模型调用本轮未暴露工具的范围缺口。
+
+### 已完成
+
+- 新增模块级 `_parse_tool_arguments()`：只允许 JSON object 进入实际分发；空参数规范化为 `{}`，非法 JSON 或非 object JSON 返回结构化 tool error。
+- 新增模块级 `execute_tool_calls_sequential()`：
+  - 按模型输出顺序处理 tool calls。
+  - 使用 `AIAgent.valid_tool_names` 检查本轮模型工具范围。
+  - 调用现有 `safe_handle_function_call()` 完成单工具安全分发。
+  - 为每个 tool call 追加对应 `tool_call_id` 的 tool result。
+- `AIAgent` 从实际发送给 Provider 的同一批 definitions 生成 `valid_tool_names`，不使用 Registry 全量名称，也不在执行时重新运行 `check_fn`。
+- `AIAgent` 原有逐工具 for-loop 已替换为 `execute_tool_calls_sequential()`。
+- 被 `check_fn=False` 隐藏的工具仍保留在 Registry 中，但不能被模型执行。
+- `model_tools` 继续负责 Registry lookup、安全 preflight、handler dispatch、JSON 序列化和 CLI 兼容。
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/tool_executor.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+
+### 对照的 Hermes 源码
+
+- `agent/conversation_loop.py`
+  - 从实际工具 definitions 维护 `valid_tool_names`。
+- `agent/tool_executor.py`
+  - 模块级顺序执行函数、模型参数解析和 tool result 追加。
+- `model_tools.py`
+  - 保留单工具 Registry dispatch 和安全执行边界。
+
+### 验证方式
+
+已运行：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent tools
+uv run learn-hermes-agent call-tool echo '{\"text\":\"tool-executor\"}'
+uv run learn-hermes-agent call-tool missing '{}'
+uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
+```
+
+另用内联断言验证：
+
+- `None`、空字符串、字典、合法 JSON object 和非法参数得到预期解析结果。
+- 不在 `valid_tool_names` 中的工具不会执行 handler。
+- 非法参数不会执行 handler，并产生配对 tool error。
+- 同批前序调用失败后，后续有效调用仍可执行。
+- `check_fn=False` 的已注册工具不在 Provider definitions 中，也不能被模型调用。
+- `.env` 读取仍被现有路径安全 preflight 以 `sensitive_name` 阻断。
+
+实际结果：`compileall`、八工具 schema、`echo`、tool demo、执行器不变量和路径 preflight 均通过；未知工具 CLI 保持严格错误语义，输出 `Unknown tool: missing` 并以退出码 `1` 结束。
+
+### 设计结论
+
+- `valid_tool_names` 是本轮 Provider 实际可见工具的快照，不是 Registry 全量名称。
+- 空的 `valid_tool_names` 表示没有工具可执行，不能解释成“不限制”。
+- ToolExecutor 负责编排一批模型 tool calls；`model_tools` 和 Registry 继续负责单工具安全分发，两层职责不合并。
+- 本批只实现模块级顺序执行，不实现 executor 类、并发、segmented execution、middleware、guardrails、checkpoint 或 terminal。
+
+### 下一步
+
+进入 Phase 10 Batch 5：Minimal Checkpoint。开始设计前先重新对齐最新版 Hermes 的 checkpoint 创建时机、保存范围和失败语义；本批仍不实现 terminal。
 
 ## 后续进度模板
 

@@ -75,8 +75,9 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 1：ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
 - Phase 10 Batch 2A 至 2E：`read_file`、`write_file`、文件工具加固、`patch` 和 `search_files`。
 - Phase 10 Batch 3：ToolRegistry v2，增加 `toolset`、`check_fn`、registry `generation`、可用定义过滤和 toolset 查询。
+- Phase 10 Batch 4：Minimal ToolExecutor，增加来自实际 Provider definitions 的 `valid_tool_names`，并由模块级顺序执行器负责模型工具范围检查、参数解析和 tool result 追加。
 
-下一阶段是 Phase 10 Batch 4：Minimal ToolExecutor。目标是把参数解析、安全 preflight、handler dispatch 和结构化错误从 `model_tools.py` 收口到独立执行层，同时保留兼容包装入口：
+下一阶段是 Phase 10 Batch 5：Minimal Checkpoint。Batch 4 完成后，工具执行链已经形成以下演进顺序：
 
 ```text
 Minimal ToolExecutor
@@ -84,7 +85,7 @@ Minimal ToolExecutor
   -> Local Foreground Terminal
 ```
 
-当前尚未实现 terminal、checkpoint、并发工具执行或 Hermes 完整 registry 动态能力。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。当前尚未实现 terminal、checkpoint、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力。
 
 ## 文档地图
 
@@ -97,3 +98,5 @@ Minimal ToolExecutor
 - `docs/plans/2026-07-21-phase-10-batch-2e-search-files-closeout-plan.md`：Batch 2E 收尾计划。
 - `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-design.md`：Batch 3 Registry v2 设计。
 - `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-plan.md`：Batch 3 实施计划。
+- `docs/plans/2026-07-21-phase-10-batch-4-minimal-tool-executor-design.md`：Batch 4 Minimal ToolExecutor 设计。
+- `docs/plans/2026-07-21-phase-10-batch-4-minimal-tool-executor-plan.md`：Batch 4 实施计划。

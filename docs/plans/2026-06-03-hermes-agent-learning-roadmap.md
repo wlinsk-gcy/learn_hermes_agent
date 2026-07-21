@@ -385,9 +385,9 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 10：Security / Approval / Execution
 
-**状态：Batch 1、Batch 2A 至 2E、Batch 3 已完成；下一步为 Batch 4 Minimal ToolExecutor**
+**状态：Batch 1、Batch 2A 至 2E、Batch 3、Batch 4 已完成；下一步为 Batch 5 Minimal Checkpoint**
 
-**目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、terminal 和 checkpoint。
+**目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、checkpoint 和 terminal。
 
 **Batch 1：Safety / Approval Primitives（已完成）**
 
@@ -455,12 +455,26 @@ Batch 3 验收：
 
 Batch 3 暂未实现 deregister、check_fn TTL/failure grace cache、dynamic schema overrides、MCP/plugin ownership、toolset alias、执行范围拦截或异步 dispatch。
 
+**Batch 4：Minimal ToolExecutor（已完成）**
+
+- 新增模块级 `_parse_tool_arguments()`，只允许 JSON object 进入实际工具分发。
+- 新增模块级 `execute_tool_calls_sequential()`，负责模型工具范围检查、参数解析、顺序执行和 tool result 追加。
+- `AIAgent.valid_tool_names` 从实际发送给 Provider 的同一批 definitions 生成。
+- 被 `check_fn=False` 隐藏的已注册工具不能被模型执行。
+- `model_tools` 继续负责 Registry lookup、安全 preflight、handler dispatch 和 CLI 兼容。
+
+Batch 4 验收：
+
+- `uv run python -m compileall -q src` 通过。
+- `tools` 仍输出八个内置工具定义。
+- `call-tool echo`、未知工具严格错误语义和 `chat --tool-demo --show-messages` 通过。
+- 参数解析、范围阻断、失败后继续执行、tool-call/result 配对和隐藏工具不变量通过。
+- `.env` 读取仍被现有路径安全 preflight 阻断。
+
+Batch 4 暂未实现 executor 类、并发、segmented execution、middleware、guardrails、checkpoint、terminal 或 dynamic registry refresh。
+
 **后续批次：**
 
-- Batch 4：Minimal ToolExecutor
-  - 从 `model_tools.py` 提取参数解析、工具存在性检查、安全 preflight、handler dispatch 和结构化错误。
-  - `model_tools.handle_function_call()` 保留为兼容包装入口。
-  - 暂不实现并发、middleware、hooks、tool search scope 或 guardrails。
 - Batch 5：Minimal Checkpoint
   - 在文件修改和后续破坏性 terminal 命令执行前创建最小 checkpoint。
   - checkpoint 是 agent 透明基础设施，不作为普通 tool 暴露。

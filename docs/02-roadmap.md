@@ -13,8 +13,8 @@
 当前进度截至 2026-07-21：
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
-- Phase 10 Batch 1、Batch 2A 至 2E、Batch 3 已完成。
-- 下一步是 Phase 10 Batch 4：Minimal ToolExecutor。
+- Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4 已完成。
+- 下一步是 Phase 10 Batch 5：Minimal Checkpoint。
 
 ## Phase 0：项目基础与约定
 
@@ -271,7 +271,7 @@
 
 ## Phase 10：安全、审批和执行环境
 
-状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety 与 Batch 3 ToolRegistry v2 已完成；下一步是 Batch 4 Minimal ToolExecutor。
+状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety、Batch 3 ToolRegistry v2 与 Batch 4 Minimal ToolExecutor 已完成；下一步是 Batch 5 Minimal Checkpoint。
 
 目标：复刻 Hermes 工具安全边界。
 
@@ -289,12 +289,16 @@
   - `get_definitions()` 支持按名称和 `check_fn` 过滤；异常采用 fail-closed。
   - 增加 toolset 查询，内置工具归入 `file`、`memory`、`skills` 和 `other`。
   - `AIAgent` 与 `model_tools.get_tool_definitions()` 已迁移到新主接口。
+- Batch 4：Minimal ToolExecutor：
+  - `AIAgent.valid_tool_names` 从实际发送给 Provider 的同一批工具 definitions 生成。
+  - 新增模块级 `execute_tool_calls_sequential()`，负责模型工具范围检查、参数解析、顺序执行和 tool result 追加。
+  - 被 `check_fn` 隐藏的已注册工具不能再被模型通过 tool call 执行。
+  - `model_tools` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容。
 
 后续顺序：
 
-1. Batch 4：最小 ToolExecutor，集中参数解析、preflight、dispatch 和结构化错误。
-2. Batch 5：最小 checkpoint。
-3. Batch 6：local foreground terminal。
+1. Batch 5：最小 checkpoint。
+2. Batch 6：local foreground terminal。
 
 暂未实现：
 
@@ -313,6 +317,7 @@
 - 当前文件工具均通过统一路径策略，敏感路径和 workspace 外路径被阻断。
 - `read_file`、`write_file`、`patch`、`search_files` 可通过 registry/dispatch 链路调用。
 - Registry 可按 toolset 和可用性生成稳定、过滤后的模型工具定义。
+- Agent 只能执行当前 Provider 请求实际暴露的工具；非法模型参数会形成配对的结构化 tool error。
 - 后续 terminal 接入时，hardline 命令必须继续优先于 yolo/auto 被阻断。
 
 ## Phase 11：Gateway
