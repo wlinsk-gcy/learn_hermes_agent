@@ -117,7 +117,7 @@ def _run_git(
         working_dir: str,
         *,
         index_file: Path | None = None,
-        allowed_returncodes: set[int] | None = None, # 只表示某些非零状态是预期行为、无需记录错误；返回值中的 ok 仍然只有退出码 0 才为 True。
+        allowed_returncodes: set[int] | None = None,  # 只表示某些非零状态是预期行为、无需记录错误；返回值中的 ok 仍然只有退出码 0 才为 True。
 ) -> tuple[bool, str, str]:
     """统一处理超时、输出捕获、工作目录检查和 Windows 窗口隐藏"""
     worktree = _normalize_path(working_dir)
@@ -163,3 +163,112 @@ def _run_git(
         )
 
     return result.returncode == 0, stdout, stderr
+
+
+def _init_store(store: Path, working_dir: str) -> str | None:
+    # working_dir 暂时没有直接使用，但保留它是为了与 Hermes 的函数接口和后续调用方式对齐。
+    if (store / "HEAD").exists():
+        return None
+
+    base = store.parent
+    base.mkdir(parents=True, exist_ok=True)
+    store.mkdir(parents=True, exist_ok=True)
+    (store / _INDEXES_DIRNAME).mkdir(exist_ok=True)
+
+    env = os.environ.copy()
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+
+    # 初始化时清除外部 GIT_* 环境变量，避免错误操作其他仓库。
+    for name in (
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_NAMESPACE",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ):
+        env.pop(name, None)
+
+    creationflags = (
+        getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if os.name == "nt"
+        else 0
+    )
+    try:
+        # 用 git init --bare 创建共享 object store。
+        result = subprocess.run(
+            ["git", "init", "--bare", str(store)],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+            cwd=str(base),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"checkpoint store initialization failed: {exc}"
+
+    if result.returncode != 0:
+        return (
+            "checkpoint store initialization failed: "
+            f"{result.stderr.strip()}"
+        )
+
+    config_working_dir = str(base)
+
+    _run_git(
+        ["config", "user.email", "learn-hermes@local"],
+        store,
+        config_working_dir,
+    )
+    _run_git(
+        ["config", "user.name", "Learn Hermes Checkpoint"],
+        store,
+        config_working_dir,
+    )
+    _run_git(
+        ["config", "commit.gpgsign", "false"],
+        store,
+        config_working_dir,
+    )
+    # 禁用签名和自动 GC，避免后台弹窗或自动清理干扰
+    _run_git(
+        ["config", "tag.gpgSign", "false"],
+        store,
+        config_working_dir,
+    )
+    _run_git(
+        ["config", "gc.auto", "0"],
+        store,
+        config_working_dir,
+    )
+    # 写入 info/exclude。
+    info_dir = store / "info"
+    info_dir.mkdir(exist_ok=True)
+    (info_dir / "exclude").write_text(
+        "\n".join(DEFAULT_EXCLUDES) + "\n",
+        encoding="utf-8",
+    )
+
+    return None
+
+# 修复 Git GC 可能删除的必要空目录
+def _repair_store_dirs(store: Path) -> None:
+    """
+    Git 的 bare store 内部通常有这些目录：
+    store/
+    ├── refs/
+    │   └── heads/
+    └── branches/
+    Git GC（垃圾回收）会整理对象、压缩引用，有时会删除已经为空的目录。
+    部分 Git 版本后续执行 git add 等操作时，如果这些目录缺失，可能错误地报告：fatal: not a git repository
+    所以 Hermes 增加了防御性修复：_repair_store_dirs()
+    它不会恢复 checkpoint 内容，也不会执行 Git GC，只是确保 shadow store 的内部目录结构完整。
+    即使重复调用也没有副作用
+    """
+    # refs/heads：存放分支引用的标准目录
+    # branches：bare Git 仓库的兼容目录。
+    for relative in ("refs/heads", "branches"):
+        (store / relative).mkdir(parents=True, exist_ok=True)
