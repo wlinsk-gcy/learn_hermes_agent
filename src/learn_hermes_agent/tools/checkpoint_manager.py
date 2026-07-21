@@ -81,3 +81,85 @@ def _validate_commit_hash(commit_hash: str) -> str | None:
         return "Invalid commit hash: expected 4-64 hexadecimal characters"
 
     return None
+
+
+def _git_env(
+        store: Path,
+        working_dir: str,
+        *,
+        index_file: Path | None = None,
+) -> dict[str, str]:
+    """把 Git 操作重定向到 shadow store，避免碰项目自身的 .git"""
+    env = os.environ.copy()
+
+    env["GIT_DIR"] = str(store)
+    env["GIT_WORK_TREE"] = str(_normalize_path(working_dir))
+    # GIT_CONFIG_*: 阻止用户的签名、hook 等全局 Git 配置干扰后台快照
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+
+    env.pop("GIT_NAMESPACE", None)
+    env.pop("GIT_ALTERNATE_OBJECT_DIRECTORIES", None)
+
+    # GIT_INDEX_FILE: 让每个 workspace 使用独立 index
+    if index_file is None:
+        env.pop("GIT_INDEX_FILE", None)
+    else:
+        env["GIT_INDEX_FILE"] = str(index_file)
+
+    return env
+
+
+def _run_git(
+        args: list[str],
+        store: Path,
+        working_dir: str,
+        *,
+        index_file: Path | None = None,
+        allowed_returncodes: set[int] | None = None, # 只表示某些非零状态是预期行为、无需记录错误；返回值中的 ok 仍然只有退出码 0 才为 True。
+) -> tuple[bool, str, str]:
+    """统一处理超时、输出捕获、工作目录检查和 Windows 窗口隐藏"""
+    worktree = _normalize_path(working_dir)
+
+    if not worktree.exists() or not worktree.is_dir():
+        return False, "", f"working directory not found: {worktree}"
+
+    allowed = allowed_returncodes or set()
+
+    creationflags = (
+        getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if os.name == "nt"
+        else 0
+    )
+
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT,
+            cwd=str(worktree),
+            env=_git_env(
+                store,
+                str(worktree),
+                index_file=index_file,
+            ),
+            stdin=subprocess.DEVNULL,
+            creationflags=creationflags,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("checkpoint git command failed: %s", exc)
+        return False, "", str(exc)
+
+    stdout = result.stdout.strip()
+    stderr = result.stderr.strip()
+    # allowed_returncodes: 只表示某些非零状态是预期行为、无需记录错误；返回值中的 ok 仍然只有退出码 0 才为 True。
+    if result.returncode != 0 and result.returncode not in allowed:
+        logger.debug(
+            "checkpoint git command failed: git %s: %s",
+            " ".join(args),
+            stderr,
+        )
+
+    return result.returncode == 0, stdout, stderr
