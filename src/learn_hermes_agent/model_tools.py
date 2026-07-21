@@ -9,9 +9,13 @@ from learn_hermes_agent.tools.approval import check_command_approval
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 
 
-def get_tool_definitions(registry: ToolRegistry | None = None) -> list[dict[str, Any]]:
+def get_tool_definitions(
+        registry: ToolRegistry | None = None,
+        *, # * 表示 tool_names 必须使用关键字传参：
+        tool_names: set[str] | None = None,
+) -> list[dict[str, Any]]:
     target = registry or get_default_registry()
-    return target.list_definitions()
+    return target.get_definitions(tool_names)
 
 
 def handle_function_call(name: str, arguments_json: str | dict[str, Any] | None = None, *,

@@ -43,7 +43,7 @@ class AIAgent:
             if len(messages) < before_compression_count:
                 self.last_context_compressed = True
             request_messages = self._build_request_messages(messages, system_prompt=system_prompt)
-            tools = self.registry.list_definitions()
+            tools = self.registry.get_definitions()
             normalized_response = self.provider.complete(request_messages, tools=tools)
             self._record_provider_response(normalized_response)
             assistant_response = self._assistant_message_from_response(normalized_response)
