@@ -11,16 +11,29 @@ from learn_hermes_agent.agent.tool_executor import execute_tool_calls_sequential
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
+from learn_hermes_agent.tools.checkpoint_manager import CheckpointManager
 
 
 class AIAgent:
     # *表示后面的参数必须用关键字传参，不能用位置传参
-    def __init__(self, provider: ProviderTransport, *, max_iterations: int = 10,
-                 registry: ToolRegistry | None = None, context_compressor: ContextCompressor | None = None) -> None:
+    def __init__(
+            self,
+            provider: ProviderTransport,
+            *,
+            max_iterations: int = 10,
+            registry: ToolRegistry | None = None,
+            context_compressor: ContextCompressor | None = None,
+            checkpoints_enabled: bool = False,
+            checkpoint_max_snapshots: int = 20,
+    ) -> None:
         self.provider = provider
         self.max_iterations = max_iterations
         self.registry = registry or get_default_registry()
-        self.valid_tool_names: set[str] = set() # 对应 Hermes 的 agent.valid_tool_names
+        self._checkpoint_mgr = CheckpointManager(
+            enabled=checkpoints_enabled,
+            max_snapshots=checkpoint_max_snapshots,
+        )
+        self.valid_tool_names: set[str] = set()  # 对应 Hermes 的 agent.valid_tool_names
         self.context_compressor = context_compressor or ContextCompressor()
         self.last_context_compressed = False
         self.iteration_budget = IterationBudget(max_iterations)
@@ -31,8 +44,14 @@ class AIAgent:
         self.session_total_tokens = 0
         self.session_cached_tokens = 0
 
-    def run_conversation(self, user_input: str, *, history: Sequence[ChatMessage] | None = None,
-                         system_prompt: str | None = None, tool_context: ToolExecutionContext | None = None,) -> list[ChatMessage]:
+    def run_conversation(
+            self,
+            user_input: str,
+            *,
+            history: Sequence[ChatMessage] | None = None,
+            system_prompt: str | None = None,
+            tool_context: ToolExecutionContext | None = None,
+    ) -> list[ChatMessage]:
         self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
@@ -67,9 +86,9 @@ class AIAgent:
             # 3. 建立后续统一接入点： 未来 checkpoint 应在工具真正执行之前处理。如果执行逻辑散落在 AIAgent 中，checkpoint、terminal、并发和中断逻辑都会继续堆进去。
             # hermes也是这种结构
             execute_tool_calls_sequential(
-                self,               # AIAgent，提供 registry、valid_tool_names 和解析 helper
-                assistant_response, # 包含本轮全部 tool_calls
-                messages,           # 执行器向这里追加 role=tool 消息
+                self,                # AIAgent，提供 registry、valid_tool_names 和解析 helper
+                assistant_response,  # 包含本轮全部 tool_calls
+                messages,            # 执行器向这里追加 role=tool 消息
                 tool_context=tool_context,
             )
 
