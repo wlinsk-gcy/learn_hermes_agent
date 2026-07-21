@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from learn_hermes_agent.agent.messages import ChatMessage, assistant_message, system_message, tool_message, user_message
+from learn_hermes_agent.agent.messages import ChatMessage, assistant_message, system_message, user_message
 from learn_hermes_agent.agent.context_compressor import ContextCompressor
 from learn_hermes_agent.agent.iteration_budget import IterationBudget
 from learn_hermes_agent.agent.tool_context import ToolExecutionContext
-from learn_hermes_agent.model_tools import safe_handle_function_call
+from learn_hermes_agent.agent.tool_executor import execute_tool_calls_sequential
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
@@ -20,6 +20,7 @@ class AIAgent:
         self.provider = provider
         self.max_iterations = max_iterations
         self.registry = registry or get_default_registry()
+        self.valid_tool_names: set[str] = set() # 对应 Hermes 的 agent.valid_tool_names
         self.context_compressor = context_compressor or ContextCompressor()
         self.last_context_compressed = False
         self.iteration_budget = IterationBudget(max_iterations)
@@ -44,6 +45,11 @@ class AIAgent:
                 self.last_context_compressed = True
             request_messages = self._build_request_messages(messages, system_prompt=system_prompt)
             tools = self.registry.get_definitions()
+            #  从实际 definitions 生成快照 -- 这里不能直接从self.registry.names里拿，因为默认的可能包含了被check_fn拒绝的工具
+            self.valid_tool_names = {
+                definition["function"]["name"]
+                for definition in tools
+            }
             normalized_response = self.provider.complete(request_messages, tools=tools)
             self._record_provider_response(normalized_response)
             assistant_response = self._assistant_message_from_response(normalized_response)
@@ -54,11 +60,18 @@ class AIAgent:
             tool_calls = self._get_tool_calls(assistant_response)
             if not tool_calls:
                 return messages
-
-            for tool_call in tool_calls:
-                function_name, arguments, tool_call_id = self._parse_tool_call(tool_call)
-                result_json = safe_handle_function_call(function_name, arguments, registry=self.registry, context=tool_context)
-                messages.append(tool_message(name=function_name, content=result_json, tool_call_id=tool_call_id))
+            # 这里删除 tool calls的for循环，目的不是删除工具执行，而是把工具执行编排从 AIAgent 移到独立的执行器模块。
+            # 1. 同时关闭工具范围缺口，旧代码只要 Registry 中存在该工具，就可能执行，即使它没有出现在本轮发给模型的 tools 中
+            # 2. 其次：AIAgent 应该关注：构造消息 -> 调用 Provider -> 判断是否有 tool calls
+            # 执行器关注：范围检查 -> 参数解析 -> 执行 -> 生成 tool result
+            # 3. 建立后续统一接入点： 未来 checkpoint 应在工具真正执行之前处理。如果执行逻辑散落在 AIAgent 中，checkpoint、terminal、并发和中断逻辑都会继续堆进去。
+            # hermes也是这种结构
+            execute_tool_calls_sequential(
+                self,               # AIAgent，提供 registry、valid_tool_names 和解析 helper
+                assistant_response, # 包含本轮全部 tool_calls
+                messages,           # 执行器向这里追加 role=tool 消息
+                tool_context=tool_context,
+            )
 
         raise RuntimeError(
             f"Exceeded max_iterations={self.iteration_budget.max_total} before receiving a final assistant message."
