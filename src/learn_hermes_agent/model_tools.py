@@ -54,13 +54,17 @@ def _preflight_tool_call(name: str, arguments: dict[str, Any], context: ToolExec
         payload = decision.to_dict()
         payload["error"] = decision.reason
         return payload
-    if name == "read_file":
-        path = arguments.get("path")
-        if not isinstance(path, str):
-            return {"error": "read_file requires a string argument: path"}
+    if name in {"read_file", "search_files"}:
+        default_path = "." if name == "search_files" else None
+        path = arguments.get("path", default_path)
+
+        if not isinstance(path, str) or not path.strip():
+            return {"error": f"{name} requires a non-empty string argument: path"}
+
         decision = check_read_path(path, context)
         if decision.allowed:
             return None
+
         payload = decision.to_dict()
         payload["error"] = decision.reason
         return payload
