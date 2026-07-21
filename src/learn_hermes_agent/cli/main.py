@@ -164,13 +164,21 @@ def build_context_compressor(config: dict) -> ContextCompressor:
     return ContextCompressor(compression_config)
 
 
-def build_agent(config: dict, *, tool_demo: bool = False) -> AIAgent:
+def build_agent(
+        config: dict,
+        *,
+        tool_demo: bool = False
+) -> AIAgent:
     provider = build_provider_transport(config, tool_demo=tool_demo)
 
     return AIAgent(
         provider=provider,
         max_iterations=config["agent"]["max_iterations"],
         context_compressor=build_context_compressor(config),
+        checkpoints_enabled=config["checkpoints"]["enabled"],
+        checkpoint_max_snapshots=(
+            config["checkpoints"]["max_snapshots"]
+        ),
     )
 
 
