@@ -204,7 +204,15 @@ assert names == ["a", "b", "plain"]
 assert calls == 1
 assert registry.get("off").name == "off"
 assert [item["function"]["name"] for item in registry.get_definitions({"a", "missing"})] == ["a"]
-assert registry.list_definitions() == registry.get_definitions()
+
+compat_registry = ToolRegistry()
+compat_registry.register(ToolEntry(
+    name="plain",
+    description="plain",
+    parameters={"type": "object"},
+    handler=lambda arguments: arguments,
+))
+assert compat_registry.list_definitions() == compat_registry.get_definitions()
 print("task-2-ok")
 '@ | uv run python -
 ```
@@ -442,4 +450,3 @@ git status --short
 - `check_fn` 不是审批或执行权限边界。
 - 下一步为 Batch 4 最小 ToolExecutor。
 - terminal 和 checkpoint 仍未实现。
-

@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 # 这里的Callable表示：ToolHandler 是一个可调用对象，它接收 一个参数，这个参数类型是 dict[str, Any]，返回值可以是任意类型。
 ToolHandler = Callable[[dict[str, Any]], Any]
+ToolAvailabilityCheck = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,8 @@ class ToolEntry:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
+    toolset: str = "other"
+    check_fn: ToolAvailabilityCheck | None = None
 
     def to_definition(self) -> dict[str, Any]:
         return {
@@ -28,11 +31,24 @@ class ToolEntry:
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolEntry] = {}
+        self._generation = 0
+
+    @property
+    def generation(self) -> int:
+        """
+        新 Registry 的 generation 是 0。
+        成功注册后加 1。
+        重复注册抛错，不增加。
+        成功覆盖也加 1。 -- “成功覆盖”指：注册一个与已有工具同名的新 ToolEntry，并用它替换旧的工具定义。
+        property 只允许外部读取，不能直接执行 registry.generation = 10。
+        """
+        return self._generation
 
     def register(self, entry: ToolEntry, *, override: bool = False) -> None:
         if entry.name in self._tools and not override:
             raise ValueError(f"Tool already registered: {entry.name}")
         self._tools[entry.name] = entry
+        self._generation += 1
 
     def get(self, name: str) -> ToolEntry:
         try:
