@@ -85,6 +85,31 @@ WRITE_FILE_PARAMETERS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+PATCH_PARAMETERS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "path": {
+            "type": "string",
+            "description": "Path to the UTF-8 text file to patch.",
+        },
+        "old_string": {
+            "type": "string",
+            "description": "Exact text to replace. Must appear in the file.",
+        },
+        "new_string": {
+            "type": "string",
+            "description": "Replacement text.",
+        },
+        "replace_all": {
+            "type": "boolean",
+            "description": "Replace all occurrences instead of requiring a unique match.",
+            "default": False,  # 默认False，避免一个短字符串替换多处
+        },
+    },
+    "required": ["path", "old_string", "new_string"],
+    "additionalProperties": False,
+}
+
 
 def _normalize_int(
         value: object,
@@ -109,6 +134,7 @@ def _normalize_int(
 
 def _is_binary_path(path: Path) -> bool:
     return path.suffix.lower() in BINARY_EXTENSIONS
+
 
 def _looks_like_read_file_line_numbered_content(content: str) -> bool:
     """目的：防止把read_file返回给模型看的带行号展示文本，直接写回真实文件；
@@ -260,6 +286,98 @@ def write_file(arguments: dict[str, Any]) -> dict[str, object]:
     }
 
 
+def patch(arguments: dict[str, Any]) -> dict[str, object]:
+    """单文件精确字符串替换"""
+
+    path = arguments.get("path")
+    old_string = arguments.get("old_string")
+    new_string = arguments.get("new_string")
+    replace_all = arguments.get("replace_all", False)
+
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError("patch requires a non-empty string argument: path")
+    if not isinstance(old_string, str):
+        raise ValueError("patch requires a string argument: old_string")
+    if not isinstance(new_string, str):
+        raise ValueError("patch requires a string argument: new_string")
+    if not isinstance(replace_all, bool):
+        raise ValueError("patch requires a boolean argument: replace_all")
+    if old_string == "":
+        raise ValueError("patch requires a non-empty old_string")
+
+    context = create_tool_execution_context(load_config())
+    decision = check_write_path(path, context)
+    if not decision.allowed:
+        payload = decision.to_dict()
+        payload["error"] = decision.reason
+        return payload
+
+    resolved = Path(decision.resolved_path)
+    if _is_binary_path(resolved):
+        return {
+            "error": "patch refuses to edit obvious binary files",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    if not resolved.exists():
+        return {
+            "error": "file not found",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    if not resolved.is_file():
+        return {
+            "error": "path is not a file",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    try:
+        original = resolved.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return {
+            "error": "file is not valid UTF-8 text",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    count = original.count(old_string)
+    if count == 0:
+        return {
+            "error": "old_string not found",
+            "path": path,
+            "resolved_path": str(resolved),
+        }
+
+    if count > 1 and not replace_all:
+        return {
+            "error": "old_string is not unique; pass replace_all=true to replace all occurrences",
+            "path": path,
+            "resolved_path": str(resolved),
+            "occurrences": count,
+        }
+
+    if replace_all:
+        updated = original.replace(old_string, new_string)
+        replacements = count
+    else:
+        updated = original.replace(old_string, new_string, 1)
+        replacements = 1
+
+    resolved.write_text(updated, encoding="utf-8")
+    bytes_written = len(updated.encode("utf-8"))
+
+    return {
+        "path": path,
+        "resolved_path": str(resolved),
+        "bytes_written": bytes_written,
+        "replacements": replacements,
+        "files_modified": [str(resolved)],
+    }
+
+
 def register_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolEntry(
@@ -275,5 +393,13 @@ def register_tools(registry: ToolRegistry) -> None:
             description="Write complete UTF-8 text content to a workspace file.",
             parameters=WRITE_FILE_PARAMETERS,
             handler=write_file,
+        )
+    )
+    registry.register(
+        ToolEntry(
+            name="patch",
+            description="Patch a UTF-8 workspace file by exact string replacement.",
+            parameters=PATCH_PARAMETERS,
+            handler=patch,
         )
     )
