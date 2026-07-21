@@ -527,3 +527,11 @@ def register_tools(registry: ToolRegistry) -> None:
             handler=patch,
         )
     )
+    registry.register(
+        ToolEntry(
+            name="search_files",
+            description="Search UTF-8 workspace files by regex pattern.",
+            parameters=SEARCH_FILES_PARAMETERS,
+            handler=search_files,
+        )
+    )
