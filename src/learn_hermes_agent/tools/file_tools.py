@@ -458,12 +458,16 @@ def search_files(arguments: dict[str, Any]) -> dict[str, object]:
     skipped_files = 0
 
     for candidate in sorted(candidates):
-        if _is_binary_path(candidate):
+        candidate_decision = check_read_path(str(candidate), context)
+        if not candidate_decision.allowed:
             skipped_files += 1
             continue
-
+        safe_candidate = Path(candidate_decision.resolved_path)
+        if _is_binary_path(safe_candidate):
+            skipped_files += 1
+            continue
         try:
-            lines = candidate.read_text(encoding="utf-8").splitlines()
+            lines = safe_candidate.read_text(encoding="utf-8").splitlines()
         except (UnicodeDecodeError, OSError):
             skipped_files += 1
             continue
@@ -473,7 +477,7 @@ def search_files(arguments: dict[str, Any]) -> dict[str, object]:
             if regex.search(line):
                 matches.append(
                     {
-                        "path": str(candidate),
+                        "path": str(safe_candidate),
                         "line_number": line_number,
                         "line": line,
                     }
