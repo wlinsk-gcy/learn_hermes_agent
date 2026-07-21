@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-06-08
+2026-07-21
 
 ## 当前状态
 
@@ -11,10 +11,7 @@
 - 读取官方文档入口：https://hermes-agent.nousresearch.com/docs
 - 读取官方开发文档中的架构、agent loop、provider runtime、session storage、gateway internals。
 - 使用本地代码索引分析 `D:\python-develop\project\hermes-agent`。
-- 确认本地源码规模：
-  - 约 2951 个文件。
-  - Python 文件约 2049 个。
-  - 核心模块包括 `run_agent.py`、`agent/`、`tools/`、`model_tools.py`、`hermes_state.py`、`cli.py`、`hermes_cli/`、`gateway/`、`acp_adapter/`、`tui_gateway/`、`plugins/`。
+- 已在 2026-07-21 重新分析最新版本地 Hermes 源码；当前核心工具链包括 `agent/conversation_loop.py`、`agent/tool_executor.py`、`model_tools.py`、`tools/registry.py` 和 `tools/*.py`。
 - 已建立当前学习项目结构：
   - `pyproject.toml`
   - `src/learn_hermes_agent/`
@@ -90,25 +87,33 @@
   - 支持 `model.default`
   - 支持 `agent.max_iterations`
   - 非法 YAML 或非 object 配置会输出 stderr warning 并回退默认配置
+- Phase 7：已完成最小上下文预算、压缩、session split、lineage observability 和 resume。
+- Phase 8：已完成最小 file-backed Memory 与只读 Skills 结构层。
+- Phase 9：已完成最小 Provider Runtime、OpenAI-compatible provider、规范化 response、usage 和 fallback chain。
+- Phase 10 Batch 1：已完成 ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
+- Phase 10 Batch 2A 至 2E：已完成 `read_file`、`write_file`、文件工具加固、精确替换版 `patch` 和最小 `search_files`。
 
 尚未完成：
 
-- 尚未实现真实 provider、文件工具、安全审批和 gateway。
-- 尚未实现 session resume；当前最小版仍是每次 `chat` 新建 session 并持久化消息。
-- 尚未实现 memory、skills、context compression、system prompt cache invalidation。
+- 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
+- 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
+- 尚未实现 ToolRegistry v2、独立 ToolExecutor、checkpoint、terminal、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
 
 1. Hermes 的核心是 `AIAgent`，不是 CLI 或 Gateway。
 2. `run_agent.py` 中的 `AIAgent.run_conversation()` 已经转发到 `agent/conversation_loop.py`，真实 loop 在后者。
-3. 工具承重链路是：
+3. 最新工具承重链路是：
 
    ```text
-   tools/registry.py
-     -> tools/*.py
+   CLI / Gateway / ACP / TUI
+     -> AIAgent
+     -> agent/conversation_loop.py
+     -> agent/tool_executor.py
      -> model_tools.py
-     -> run_agent.py / cli.py / gateway / acp / batch
+     -> tools/registry.py
+     -> tools/*.py
    ```
 
 4. OpenAI 风格消息协议是工具调用的核心：
@@ -1593,6 +1598,95 @@ uv run python -c "from learn_hermes_agent.agent.tool_context import create_tool_
 ### 下一步
 
 进入 Phase 10 Batch 2 前，应继续遵守当前边界：先设计并实现 file tools with safety，不开始 terminal local backend，不实现 checkpoint。
+
+## 2026-07-21 Phase 10 Batch 2 File Tools With Safety 进度更新
+
+### 本次目标
+
+完成并集中验收 Phase 10 Batch 2A 至 2E 的最小文件工具闭环，同时根据最新版 Hermes 的 Registry / ToolExecutor 分层重新确定后续路线。
+
+### 已完成
+
+- Batch 2A `read_file`：
+  - 支持 `path`、`offset`、`limit`。
+  - 使用 `LINE|CONTENT` 行号展示格式。
+  - 限制单次读取行数和字符数，拒绝明显二进制文件和非 UTF-8 文本。
+- Batch 2B `write_file`：
+  - 支持 UTF-8 完整覆盖写入和父目录创建。
+  - dispatch preflight 与 handler 内部均执行写路径安全检查。
+  - 返回 `bytes_written` 和 `files_modified`。
+- Batch 2C 文件工具加固：
+  - 识别主要由连续 `read_file` 行号展示文本组成的内容。
+  - 拒绝把展示文本直接写回真实文件。
+- Batch 2D `patch`：
+  - 支持单文件精确字符串替换。
+  - 默认要求 `old_string` 唯一；多处匹配必须显式传入 `replace_all=true`。
+  - 返回替换次数、最终字节数和 `files_modified`。
+- Batch 2E `search_files`：
+  - 支持 UTF-8 文件内容正则搜索、搜索根路径和结果数量限制。
+  - 非法正则返回结构化错误。
+  - 根路径通过统一 preflight；每个递归候选文件在读取前再次执行 `check_read_path()`。
+  - 敏感文件和解析到 workspace 外的候选路径会被跳过。
+
+### 修改文件
+
+- `src/learn_hermes_agent/tools/file_tools.py`
+- `src/learn_hermes_agent/tools/registry.py`
+- `src/learn_hermes_agent/model_tools.py`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-06-22-phase-10-batch-2a-read-file-tool-plan.md`
+- `docs/plans/2026-06-22-phase-10-batch-2b-write-file-design.md`
+- `docs/plans/2026-06-22-phase-10-batch-2b-write-file-tool-plan.md`
+- `docs/plans/2026-06-28-phase-10-batch-2c-file-tool-hardening-plan.md`
+- `docs/plans/2026-07-21-phase-10-post-file-tools-route-design.md`
+- `docs/plans/2026-07-21-phase-10-batch-2e-search-files-closeout-plan.md`
+
+### 对照的 Hermes 源码
+
+- `tools/file_tools.py`
+  - `read_file_tool()` / `write_file_tool()` / `patch_tool()` / `search_tool()`。
+  - `_filter_read_blocked_search_results()` 对 search 结果逐项执行读取安全过滤。
+- `tools/registry.py`
+  - `ToolEntry` 的 toolset、check_fn、generation 和可用工具定义过滤。
+- `agent/tool_executor.py`
+  - 参数解析、阻断判断、guardrails、checkpoint preflight 和执行分发。
+
+### 验证方式
+
+本轮集中运行并观察：
+
+```powershell
+uv run python -m compileall -q src
+uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
+```
+
+另通过 `get_tool_definitions()`、`handle_function_call()` 和临时 `sandbox/batch2e_closeout/` 数据执行轻量不变量验证：
+
+- registry 同时暴露 `read_file`、`write_file`、`patch`、`search_files`。
+- `search_files` schema 的 `pattern` 必填，`path` 默认 `.`，`limit` 范围为 1 到 200。
+- `write_file` 正常写入并返回 `files_modified`。
+- `read_file` 返回 `1|red blue red`。
+- `write_file` 拒绝 `1|alpha\n2|beta` 形式的展示文本。
+- `patch` 唯一替换成功；多处匹配默认拒绝；`replace_all=true` 成功替换两处。
+- `search_files` 在普通文件和 `.env` 含有相同标记时只返回普通文件，并记录敏感文件被跳过。
+- 非法正则、`.env` 根路径、workspace 外路径和自定义 context 外路径均返回结构化阻断结果。
+- `limit=1` 返回一条结果并标记 `truncated=true`。
+- `chat --tool-demo --show-messages` 仍输出 `user -> assistant(tool_calls) -> tool -> assistant(final)`。
+
+所有验证命令退出码均为 0；临时验证目录已删除。
+
+### 设计结论
+
+- 文件工具 handler 保留 defense-in-depth，但 per-call workspace 边界仍由 dispatch preflight 统一执行。
+- `search_files` 必须对候选文件逐项检查，不能只验证搜索根目录，否则递归搜索可能读取嵌套敏感文件或 workspace 外符号链接目标。
+- 当前 `patch` 和 `search_files` 是学习项目的最小子集，不追求一次复制 Hermes 的 V4A patch、ripgrep backend、pagination 和重复搜索 guard。
+- 不应直接进入 terminal：最新版 Hermes 已把 Registry 元数据和 ToolExecutor 执行职责明确分层，学习项目应先补齐这两个承重层。
+
+### 下一步
+
+进入 Phase 10 Batch 3：ToolRegistry v2。先对齐最新版 `tools/registry.py`，只实现带兼容默认值的 `toolset`、`check_fn` 和 `generation`；不开始 ToolExecutor、checkpoint 或 terminal。
 
 ## 后续进度模板
 

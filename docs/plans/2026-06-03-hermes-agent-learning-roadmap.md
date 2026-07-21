@@ -385,7 +385,7 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 10：Security / Approval / Execution
 
-**状态：Batch 1 已完成**
+**状态：Batch 1 与 Batch 2A 至 2E 已完成；下一步为 Batch 3 ToolRegistry v2**
 
 **目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、terminal 和 checkpoint。
 
@@ -408,7 +408,7 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 3. 定义 `CommandRisk`、`ApprovalDecision` 和 `check_command_approval()`。
 4. 定义 `PathDecision`、`check_read_path()`、`check_write_path()` 和 `resolve_workspace_path()`。
 5. 将 context 贯穿到 `AIAgent.run_conversation()`、`safe_handle_function_call()`、`handle_function_call()`。
-6. 在 `model_tools._preflight_tool_call()` 中预留 `terminal`、`read_file`、`write_file`、`patch` 的统一 preflight 入口。
+6. 在 `model_tools._preflight_tool_call()` 中预留 `terminal`、`read_file`、`search_files`、`write_file`、`patch` 的统一 preflight 入口。
 
 Batch 1 验收：
 
@@ -425,21 +425,33 @@ Batch 1 验收：
   - `.ssh/id_rsa` write -> `blocked`
   - `.learn_hermes/config.yaml` write -> `blocked`
 
-**剩余批次：**
+**Batch 2：File Tools With Safety（已完成）**
 
-- Batch 2：File Tools With Safety
-  - 接入 `read_file`、`write_file`、`patch` 的最小版本。
-  - 写前调用 `check_write_path()`。
-  - 暂不实现 fuzzy patch、外部修改检测、多文件 patch、LSP diagnostics 或 read dedup。
-- Batch 3：Terminal Local Backend
-  - 接入最小 `terminal` tool。
-  - 执行前调用 `check_command_approval()`。
-  - hardline block 永远不可被 `force`、`yolo` 或 `auto` 绕过。
-  - 暂不实现 Docker/SSH/Modal/Daytona backend、PTY、background process 或 streaming output。
-- Batch 4：Minimal Checkpoint
-  - 在文件修改和破坏性 terminal 命令执行前创建最小 checkpoint。
+- Batch 2A：新增 `read_file`，支持 `path`、`offset`、`limit`、`LINE|CONTENT` 展示格式、UTF-8 和明显二进制文件阻断。
+- Batch 2B：新增 `write_file`，写前执行统一 preflight 和 handler 内 defense-in-depth，返回 `files_modified`。
+- Batch 2C：新增 `read_file` 行号展示文本检测，阻止展示文本被直接写回真实文件。
+- Batch 2D：新增最小 `patch`，只支持单文件精确字符串替换、唯一性检查和显式 `replace_all`。
+- Batch 2E：新增最小 `search_files`，只支持内容正则搜索、`path` 和 `limit`；根路径与候选文件均执行读安全检查。
+
+Batch 2 暂未实现 fuzzy/V4A patch、外部修改检测、多文件 patch、LSP diagnostics、read dedup、search pagination、file glob、file-name search 或 ripgrep backend。
+
+**后续批次：**
+
+- Batch 3：ToolRegistry v2
+  - 最小增加 `toolset`、`check_fn` 和 `generation`。
+  - 保持现有 `ToolEntry(...)` 与工具注册方式兼容。
+  - 暂不实现 TTL cache、dynamic schema overrides、MCP ownership 或 toolset alias。
+- Batch 4：Minimal ToolExecutor
+  - 从 `model_tools.py` 提取参数解析、工具存在性检查、安全 preflight、handler dispatch 和结构化错误。
+  - `model_tools.handle_function_call()` 保留为兼容包装入口。
+  - 暂不实现并发、middleware、hooks、tool search scope 或 guardrails。
+- Batch 5：Minimal Checkpoint
+  - 在文件修改和后续破坏性 terminal 命令执行前创建最小 checkpoint。
   - checkpoint 是 agent 透明基础设施，不作为普通 tool 暴露。
-  - 暂不实现 Hermes 的完整 git object checkpoint store 或 `/rollback` gateway 命令。
+- Batch 6：Terminal Local Backend
+  - 最后接入最小 local foreground `terminal` tool。
+  - 执行前调用 `check_command_approval()`，hardline block 永远不可被 `force`、`yolo` 或 `auto` 绕过。
+  - 暂不实现 Docker/SSH/Modal/Daytona、PTY、background process 或 streaming output。
 
 ## Phase 11：Gateway
 

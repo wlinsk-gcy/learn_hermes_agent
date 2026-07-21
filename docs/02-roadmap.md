@@ -272,16 +272,32 @@
 
 ## Phase 10：安全、审批和执行环境
 
+状态：Batch 1 Safety / Approval Primitives 与 Batch 2 File Tools With Safety 已完成；下一步是 Batch 3 ToolRegistry v2。
+
 目标：复刻 Hermes 工具安全边界。
 
-实现内容：
+已完成：
 
-- 文件路径安全。
-- 写文件审批。
-- terminal 命令审批。
-- per-session approval context。
-- checkpoint 简化版。
-- terminal backend 先实现 local，再扩展 Docker/SSH。
+- Batch 1：`ToolExecutionContext`、命令审批策略、文件路径安全策略和 dispatch 前 preflight。
+- Batch 2A：带行号和分页的最小 `read_file`。
+- Batch 2B：路径受控、完整覆盖写入的 `write_file`。
+- Batch 2C：阻止把 `read_file` 行号展示文本直接写回文件。
+- Batch 2D：单文件精确字符串替换版 `patch`。
+- Batch 2E：最小 `search_files`，支持正则、结果限制、统一 preflight 和候选文件级安全过滤。
+
+后续顺序：
+
+1. Batch 3：ToolRegistry v2，补充 `toolset`、`check_fn` 和 `generation` 的最小兼容实现。
+2. Batch 4：最小 ToolExecutor，集中参数解析、preflight、dispatch 和结构化错误。
+3. Batch 5：最小 checkpoint。
+4. Batch 6：local foreground terminal。
+
+暂未实现：
+
+- terminal tool 和任何命令执行 backend。
+- checkpoint。
+- 并发工具执行、middleware、guardrails。
+- Hermes 完整 registry 动态能力和完整 search/patch 高级模式。
 
 核心学习点：
 
@@ -290,8 +306,9 @@
 
 验收：
 
-- 未审批时危险命令被拦截。
-- 同一 session 的 yolo/approval 状态不泄漏到其他 session。
+- 当前文件工具均通过统一路径策略，敏感路径和 workspace 外路径被阻断。
+- `read_file`、`write_file`、`patch`、`search_files` 可通过 registry/dispatch 链路调用。
+- 后续 terminal 接入时，hardline 命令必须继续优先于 yolo/auto 被阻断。
 
 ## Phase 11：Gateway
 

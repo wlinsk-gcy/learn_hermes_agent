@@ -52,33 +52,39 @@ provider transport + tool registry + session store + prompt builder
 - `hermes-agent = "run_agent:main"`
 - `hermes-acp = "acp_adapter.entry:main"`
 
-本地源码的 Hermes `AGENTS.md` 明确给出工具依赖链：
+最新版 Hermes 源码中的工具执行承重链路为：
 
 ```text
-tools/registry.py
-  -> tools/*.py
+CLI / Gateway / ACP / TUI
+  -> AIAgent
+  -> agent/conversation_loop.py
+  -> agent/tool_executor.py
   -> model_tools.py
-  -> run_agent.py / cli.py / batch_runner.py / environments/
+  -> tools/registry.py
+  -> tools/*.py
 ```
 
 这条链是复刻的第一优先级。
 
 ## 当前实现进度
 
-截至 2026-06-04，学习项目已经完成前三个基础阶段：
+截至 2026-07-21，学习项目已经完成：
 
-- Phase 0：项目基础、uv 配置、`src/learn_hermes_agent` 包结构、最小 CLI。
-- Phase 1：最小 `AIAgent`、OpenAI 风格消息字典、`ProviderTransport` 协议、`FakeProviderTransport`。
-- Phase 2：最小 `ToolRegistry`、`ToolEntry`、内置 `echo` 工具、tool schema 输出、`handle_function_call()` 手动分发。
+- Phase 0 至 Phase 8 的最小可运行版本。
+- Phase 9：最小 Provider Runtime、OpenAI-compatible provider、规范化 response 和 fallback chain。
+- Phase 10 Batch 1：ToolExecutionContext、命令审批、文件路径安全和 dispatch preflight。
+- Phase 10 Batch 2A 至 2E：`read_file`、`write_file`、文件工具加固、`patch` 和 `search_files`。
 
-下一阶段是 Phase 3：把工具注册表接入 agent loop，实现 Hermes 最关键的工具调用消息配对：
+下一阶段是 Phase 10 Batch 3：ToolRegistry v2。目标是在保持现有工具注册兼容的前提下，增加最小 `toolset`、`check_fn` 和 registry `generation`，再进入独立 ToolExecutor：
 
 ```text
-user
-assistant(tool_calls)
-tool
-assistant(final)
+ToolRegistry v2
+  -> Minimal ToolExecutor
+  -> Minimal Checkpoint
+  -> Local Foreground Terminal
 ```
+
+当前尚未实现 terminal、checkpoint、并发工具执行或 Hermes 完整 registry 动态能力。
 
 ## 文档地图
 
@@ -87,3 +93,5 @@ assistant(final)
 - `docs/03-source-reading-index.md`：源码阅读顺序。
 - `docs/04-progress-handoff.md`：跨 session 进度交接。
 - `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`：实施计划。
+- `docs/plans/2026-07-21-phase-10-post-file-tools-route-design.md`：文件工具完成后的架构路线。
+- `docs/plans/2026-07-21-phase-10-batch-2e-search-files-closeout-plan.md`：Batch 2E 收尾计划。

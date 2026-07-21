@@ -38,17 +38,19 @@
 原因：
 
 - Hermes 的核心入口 `run_agent.py`、`cli.py`、`hermes_state.py` 都是大型文件，直接复制会掩盖模块边界。
-- 真正需要学习的是承重链路：`tools/registry.py -> model_tools.py -> AIAgent.run_conversation() -> CLI/Gateway/ACP/TUI`。
+- 最新参考源码的承重链路是：`CLI/Gateway/ACP/TUI -> AIAgent -> agent/conversation_loop.py -> agent/tool_executor.py -> model_tools.py -> tools/registry.py -> tools/*.py`。
 - 逐层复刻可以在每个阶段形成可运行闭环，便于验证和纠偏。
 
 ## 当前状态
 
-截至 2026-06-04：
+截至 2026-07-21：
 
-- 已分析官方文档和本地源码结构。
+- 已重新分析最新版 Hermes 源码及 Registry / ToolExecutor 承重链路。
 - 已建立中文路线图和 session 交接文档。
-- Phase 0 已完成：uv 项目、`pyproject.toml`、`src/` 包结构、最小 CLI、`doctor` 命令。
-- Phase 1 已完成：最小 `AIAgent`、OpenAI 风格 message、`ProviderTransport` 协议、`FakeProviderTransport`、`chat` 命令。
-- Phase 2 已完成：最小 `ToolRegistry`、`ToolEntry`、内置 `echo` 工具、tool schema 输出、`model_tools.handle_function_call()`、`tools` / `call-tool` CLI 命令。
+- Phase 0 至 Phase 8 已完成当前学习路线的最小版本。
+- Phase 9 Provider Runtime 已完成最小版本。
+- Phase 10 Batch 1 Safety / Approval Primitives 已完成。
+- Phase 10 Batch 2A 至 2E File Tools With Safety 已完成：`read_file`、`write_file`、`patch`、`search_files`。
+- `terminal`、checkpoint 和独立 ToolExecutor 尚未实现。
 
-下一步应执行 `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md` 的 Phase 3：Tool Calling Conversation Loop。
+下一步应执行 Phase 10 Batch 3：ToolRegistry v2。先实现带兼容默认值的 `toolset`、`check_fn` 和 `generation`，不开始 ToolExecutor、checkpoint 或 terminal。
