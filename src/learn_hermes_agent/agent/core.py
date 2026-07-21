@@ -58,6 +58,7 @@ class AIAgent:
 
         self.iteration_budget = IterationBudget(self.max_iterations)
         while self.iteration_budget.consume():
+            self._checkpoint_mgr.new_turn()
             before_compression_count = len(messages)
             messages = self.context_compressor.compress(messages, system_prompt=system_prompt)
             if len(messages) < before_compression_count:
