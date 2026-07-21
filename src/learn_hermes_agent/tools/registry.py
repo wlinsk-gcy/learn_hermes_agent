@@ -17,7 +17,7 @@ class ToolEntry:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
-    toolset: str = "other" # 给工具设置一个分类标签，把用途相近的工具分组。例如file，memory，skills，等等
+    toolset: str = "other"  # 给工具设置一个分类标签，把用途相近的工具分组。例如file，memory，skills，等等
     check_fn: ToolAvailabilityCheck | None = None
 
     def to_definition(self) -> dict[str, Any]:
@@ -64,6 +64,25 @@ class ToolRegistry:
 
     def entries(self) -> list[ToolEntry]:
         return [self._tools[name] for name in self.names()]
+
+    def get_registered_toolset_names(self) -> list[str]:
+        """返回所有已注册的 toolset，集合用于去重，sorted() 保证顺序稳定。"""
+        return sorted({entry.toolset for entry in self._tools.values()})
+
+    def get_tool_names_for_toolset(self, toolset: str) -> list[str]:
+        """ 返回属于指定分类的工具名称。未知分类返回空列表。"""
+        return sorted(
+            entry.name
+            for entry in self._tools.values()
+            if entry.toolset == toolset
+        )
+
+    def get_toolset_for_tool(self, tool_name: str) -> str | None:
+        """返回指定工具所属分类。未知工具返回 None。"""
+        entry = self._tools.get(tool_name)
+        if entry is None:
+            return None
+        return entry.toolset
 
     def get_definitions(
             self,
