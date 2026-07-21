@@ -85,12 +85,11 @@ model_tools.py
 
 只实现：
 
-- 参数 JSON 解析。
-- 工具存在性检查。
-- 统一安全 preflight。
-- handler dispatch。
-- 结构化错误返回。
-- `model_tools` 保留兼容包装入口。
+- 模块级顺序 tool-call executor，与最新版 Hermes 的 `agent/tool_executor.py` 结构对齐。
+- 从实际发送给 Provider 的 definitions 形成 `valid_tool_names`。
+- 模型工具名称范围检查和参数 JSON object 解析。
+- 顺序调用现有 `model_tools.safe_handle_function_call()`，并追加配对 tool result。
+- `model_tools` 继续保留 registry dispatch、统一安全 preflight 和 CLI 兼容入口。
 
 暂不实现：
 

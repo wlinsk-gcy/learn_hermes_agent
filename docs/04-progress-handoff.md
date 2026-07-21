@@ -1775,7 +1775,7 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 
 ### 下一步
 
-进入 Phase 10 Batch 4：Minimal ToolExecutor。开始设计前重新对齐最新版 `agent/tool_executor.py` 和当前 `model_tools.py`，只提取参数解析、工具存在性检查、模型调用范围、安全 preflight、handler dispatch 和结构化错误；不开始 checkpoint 或 terminal。
+进入 Phase 10 Batch 4：Minimal ToolExecutor。最新源码对齐后采用 Hermes 的模块级顺序执行函数结构：AIAgent 从实际 definitions 形成 `valid_tool_names`，executor 负责模型范围检查、参数解析、顺序执行和 tool result 追加，`model_tools` 继续保留 registry dispatch 与现有安全 preflight；不开始 checkpoint 或 terminal。
 
 ## 后续进度模板
 
