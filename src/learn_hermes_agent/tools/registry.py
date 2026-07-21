@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 # 这里的Callable表示：ToolHandler 是一个可调用对象，它接收 一个参数，这个参数类型是 dict[str, Any]，返回值可以是任意类型。
 ToolHandler = Callable[[dict[str, Any]], Any]
@@ -14,7 +17,7 @@ class ToolEntry:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
-    toolset: str = "other"
+    toolset: str = "other" # 给工具设置一个分类标签，把用途相近的工具分组。例如file，memory，skills，等等
     check_fn: ToolAvailabilityCheck | None = None
 
     def to_definition(self) -> dict[str, Any]:
@@ -62,8 +65,47 @@ class ToolRegistry:
     def entries(self) -> list[ToolEntry]:
         return [self._tools[name] for name in self.names()]
 
+    def get_definitions(
+            self,
+            tool_names: set[str] | None = None,  # 允许只获取指定工具的定义。
+    ) -> list[dict[str, Any]]:
+        """
+        工具已经注册在本地的Tool Registry里面了，
+        get_definitions只是决定是否要把tool暴露给LLM
+        """
+        entries = self.entries()
+        if tool_names is not None:
+            entries = [entry for entry in entries if entry.name in tool_names]
+
+        availability_cache: dict[int, bool] = {}  # 共享同一个 check_fn 的多个工具，在本次查询中只检查一次。
+        definitions: list[dict[str, Any]] = []
+
+        for entry in entries:
+            check_fn = entry.check_fn
+            if check_fn is not None:
+                cache_key = id(check_fn)  # 用函数对象的身份作为本次缓存键
+
+                if cache_key not in availability_cache:
+                    try:
+                        availability_cache[cache_key] = bool(check_fn())
+                    except Exception:
+                        #  check_fn 抛异常：记录 warning 并隐藏工具，即 fail-closed。
+                        logger.warning(
+                            "Tool availability check failed for %s",
+                            entry.name,
+                            exc_info=True,
+                        )
+                        availability_cache[cache_key] = False  # check_fn=False：不向模型展示工具。
+
+                if not availability_cache[cache_key]:
+                    continue
+
+            definitions.append(entry.to_definition())
+
+        return definitions
+
     def list_definitions(self) -> list[dict[str, Any]]:
-        return [entry.to_definition() for entry in self.entries()]
+        return self.get_definitions()
 
 
 _default_registry: ToolRegistry | None = None
