@@ -20,6 +20,7 @@ from learn_hermes_agent.config import (
     get_skills_dir_path,
     get_state_db_path,
     load_config,
+    get_checkpoints_dir_path,
 )
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
 from learn_hermes_agent.providers.runtime import build_provider_transport
@@ -182,6 +183,7 @@ def run_doctor() -> int:
     print(f"platform: {platform.platform()}")
     print(f"home: {get_app_home()}")
     print(f"config: {get_config_path()}")
+    print(f"checkpoints: {get_checkpoints_dir_path()}")
     model_config = config["model"]
     api_key_env = model_config["api_key_env"]
     api_key_env_status = "set" if os.environ.get(api_key_env) else "missing"
@@ -214,6 +216,10 @@ def run_doctor() -> int:
     print(f"compression_threshold: {compression['threshold']}")
     print(f"compression_protect_first_n: {compression['protect_first_n']}")
     print(f"compression_protect_last_n: {compression['protect_last_n']}")
+
+    checkpoints = config["checkpoints"]
+    print(f"checkpoints_enabled: {checkpoints['enabled']}")
+    print(f"checkpoint_max_snapshots: {checkpoints['max_snapshots']}")
 
     security = config["security"]
     print(f"security_approval_mode: {security['approval_mode']}")

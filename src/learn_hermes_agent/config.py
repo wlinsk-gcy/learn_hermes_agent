@@ -29,6 +29,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "protect_first_n": 2,
         "protect_last_n": 6,
     },
+    # checkpoints是文件修改前的快照生成策略，例如write_file和patch。
+    "checkpoints": {
+        "enabled": False, # 启用后会先保存 workspace 当前状态，再修改文件。修改出错时，可以用 checkpoint 恢复修改前内容。
+        "max_snapshots": 20, # 每个 workspace 最多保留 20 个快照。
+    },
     "security": {
         "approval_mode": "ask",
         "yolo": False,
@@ -64,6 +69,10 @@ def get_memory_dir_path() -> Path:
 
 def get_skills_dir_path() -> Path:
     return get_app_home() / "skills"
+
+
+def get_checkpoints_dir_path() -> Path:
+    return get_app_home() / "checkpoints"
 
 
 def read_raw_config() -> dict[str, Any]:
@@ -256,6 +265,31 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "threshold": float(threshold),
         "protect_first_n": protect_first_n,
         "protect_last_n": protect_last_n,
+    }
+
+    checkpoints_config = config.get("checkpoints")
+    if isinstance(checkpoints_config, bool):
+        checkpoints_config = {"enabled": checkpoints_config}
+    elif not isinstance(checkpoints_config, dict):
+        checkpoints_config = {}
+
+    default_checkpoints_config = DEFAULT_CONFIG["checkpoints"]
+
+    checkpoints_enabled = checkpoints_config.get("enabled")
+    if not isinstance(checkpoints_enabled, bool):
+        checkpoints_enabled = default_checkpoints_config["enabled"]
+
+    max_snapshots = checkpoints_config.get("max_snapshots")
+    if (
+            isinstance(max_snapshots, bool)
+            or not isinstance(max_snapshots, int)
+            or max_snapshots <= 0
+    ):
+        max_snapshots = default_checkpoints_config["max_snapshots"]
+
+    config["checkpoints"] = {
+        "enabled": checkpoints_enabled,
+        "max_snapshots": max_snapshots,
     }
 
     security_config = config.get("security")
