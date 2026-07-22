@@ -274,3 +274,86 @@ def check_terminal_requirements() -> bool:
         return False
 
     return True
+
+
+def terminal_tool(
+        arguments: dict[str, Any],
+) -> dict[str, object]:
+    command = arguments.get("command")
+    if not isinstance(command, str) or not command.strip():
+        return _error_result(
+            "terminal requires a non-empty string argument: "
+            "command"
+        )
+
+    risk = classify_command(command)
+    if risk.level == "hardline":
+        return _error_result(
+            f"Hardline blocked: {risk.description}"
+        )
+
+    foreground_error = _foreground_error(command)
+    if foreground_error is not None:
+        return _error_result(foreground_error)
+
+    config = load_config()
+    terminal_config = config["terminal"]
+
+    timeout = arguments.get(
+        "timeout",
+        terminal_config["timeout_seconds"],
+    )
+    if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, int)
+            or timeout < 1
+            or timeout > 600
+    ):
+        return _error_result(
+            "terminal timeout must be an integer "
+            "between 1 and 600"
+        )
+
+    try:
+        workdir = _resolve_workdir(
+            arguments.get("workdir")
+        )
+    except ValueError as exc:
+        return _error_result(str(exc))
+
+    try:
+        bash = find_bash()
+    except RuntimeError as exc:
+        return _error_result(
+            f"terminal is unavailable: {exc}"
+        )
+
+    environment = LocalEnvironment(bash)
+    try:
+        result = environment.execute(
+            command,
+            cwd=workdir,
+            timeout=timeout,
+            max_output_chars=terminal_config[
+                "max_output_chars"
+            ],
+            sensitive_env_names=(
+                _provider_secret_env_names(config)
+            ),
+        )
+    except OSError as exc:
+        return _error_result(
+            f"Failed to start terminal command: {exc}"
+        )
+    except Exception as exc:
+        return _error_result(
+            f"Terminal command failed: {exc}"
+        )
+
+    return {
+        "output": str(result.get("output", "")),
+        "exit_code": int(
+            result.get("returncode", -1)
+        ),
+        "error": None,
+    }
