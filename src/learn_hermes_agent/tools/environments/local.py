@@ -93,6 +93,61 @@ def _git_root_from_bash(bash: str) -> str:
     return parent
 
 
+def _mandatory_aslr_enabled() -> bool | None:
+    """
+    查询Mandatory ASLR
+
+    返回值含义：
+
+    - True：系统强制启用 ASLR。
+    - False：明确关闭或未配置。
+    - None：无法查询，不能据此下结论。
+    """
+    global _mandatory_aslr_enabled_cache
+
+    if _mandatory_aslr_enabled_cache is not None:
+        return _mandatory_aslr_enabled_cache
+
+    try:
+        powershell = (
+                shutil.which("powershell.exe")
+                or "powershell.exe"
+        )
+        result = subprocess.run(
+            [
+                powershell,
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                (
+                    "(Get-ProcessMitigation -System).Aslr."
+                    "ForceRelocateImages.ToString()"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=_windows_hide_flags(),
+        )
+        if result.returncode != 0:
+            return None
+
+        value = (result.stdout or "").strip().upper()
+        if value == "ON":
+            _mandatory_aslr_enabled_cache = True
+            return True
+        if value in {"OFF", "NOTSET"}:
+            _mandatory_aslr_enabled_cache = False
+            return False
+    except Exception as exc:
+        logger.debug(
+            "Could not query Windows Mandatory ASLR state: %s",
+            exc,
+        )
+
+    return None
+
+
 def find_bash() -> str | None:
     """在 Windows 优先寻找 Git Bash 的标准安装位置；其他系统优先寻找 Bash，并保留 /bin/sh 作为最后降级"""
     if not _IS_WINDOWS:
