@@ -1089,7 +1089,11 @@ def _resolve_workdir(raw_workdir: object) -> Path:
 
 
 def check_terminal_requirements() -> bool:
-    return find_bash() is not None
+    try:
+        find_bash()
+    except RuntimeError:
+        return False
+    return True
 
 
 def terminal_tool(
@@ -1137,10 +1141,11 @@ def terminal_tool(
     except ValueError as exc:
         return _error_result(str(exc))
 
-    bash = find_bash()
-    if bash is None:
+    try:
+        bash = find_bash()
+    except RuntimeError as exc:
         return _error_result(
-            "terminal is unavailable: Bash was not found"
+            f"terminal is unavailable: {exc}"
         )
 
     environment = LocalEnvironment(bash)
@@ -1200,6 +1205,7 @@ TERMINAL_PARAMETERS: dict[str, Any] = {
         },
     },
     "required": ["command"],
+    "additionalProperties": False,
 }
 
 
