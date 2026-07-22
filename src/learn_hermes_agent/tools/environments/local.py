@@ -7,6 +7,8 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import threading
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +346,31 @@ def find_bash() -> str:
         "Install it from: https://git-scm.com/download/win\n"
         "Or set HERMES_GIT_BASH_PATH to your bash.exe location."
     )
+
+
+class _BoundedOutputCollector:
+    """
+    有界输出收集器
+
+    """
+    def __init__(self, max_chars: int) -> None:
+        self.max_chars = max(1, int(max_chars))
+        self._head_limit = int(self.max_chars * 0.4) # 前 40% 保存输出开头。
+        self._tail_limit = self.max_chars - self._head_limit # 后 60% 保存输出结尾
+
+        self._head: list[str] = []
+        self._tail: deque[str] = deque()
+
+        self._head_chars = 0
+        self._tail_chars = 0
+        self._total_chars = 0
+
+        self._lock = threading.Lock() # 用于后续读取线程和主线程之间同步
+
+    @property
+    def total_chars(self) -> int:
+        with self._lock:
+            return self._total_chars # 记录未经裁剪的总字符数
 
 
 def _strip_ansi(value: str) -> str:
