@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from learn_hermes_agent.agent.messages import ChatMessage, tool_message
 from learn_hermes_agent.agent.tool_context import ToolExecutionContext
 from learn_hermes_agent.model_tools import safe_handle_function_call
+from learn_hermes_agent.agent.file_safety import resolve_workspace_path
 
 if TYPE_CHECKING:
     # TYPE_CHECKING 使 AIAgent 只在类型检查时导入，避免后续形成循环导入。
@@ -70,6 +71,47 @@ agent: AIAgent
 - 两者配合：既有类型提示，又避免循环导入。
 
 """
+
+
+def _ensure_file_checkpoint(
+        agent: AIAgent,
+        function_name: str,
+        function_args: dict[str, Any],
+        tool_context: ToolExecutionContext | None,
+) -> None:
+    if function_name not in {"write_file", "patch"}:
+        return
+
+    if (
+            tool_context is None
+            or not agent._checkpoint_mgr.enabled
+    ):
+        return
+
+    file_path = function_args.get("path")
+    if (
+            not isinstance(file_path, str)
+            or not file_path.strip()
+    ):
+        return
+
+    resolved_path = resolve_workspace_path(
+        file_path,
+        tool_context,
+    )
+
+    working_dir = (
+        agent._checkpoint_mgr.get_working_dir_for_path(
+            str(resolved_path),
+            boundary=str(tool_context.workspace_root),
+        )
+    )
+
+    agent._checkpoint_mgr.ensure_checkpoint(
+        working_dir,
+        f"before {function_name}",
+    )
+
 
 def _parse_tool_arguments(
         raw_arguments: Any,
