@@ -30,8 +30,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "protect_last_n": 6,
     },
     "terminal": {
-        "timeout_seconds": 180, # terminal 默认最多运行 180 秒。
-        "max_output_chars": 50_000, # 最多向上层返回 50000 个字符，避免输出无限增长。
+        "timeout_seconds": 180,  # terminal 默认最多运行 180 秒。
+        "max_output_chars": 50_000,  # 最多向上层返回 50000 个字符，避免输出无限增长。
     },
     # checkpoints是文件修改前的快照生成策略，例如write_file和patch。
     "checkpoints": {
@@ -269,6 +269,37 @@ def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "threshold": float(threshold),
         "protect_first_n": protect_first_n,
         "protect_last_n": protect_last_n,
+    }
+
+    terminal_config = config.get("terminal")
+    if not isinstance(terminal_config, dict):
+        # 非字典配置回退到默认值
+        terminal_config = {}
+
+    default_terminal_config = DEFAULT_CONFIG["terminal"]
+    # timeout 只接受 1～600 秒。
+    terminal_timeout = terminal_config.get("timeout_seconds")
+    if (
+            isinstance(terminal_timeout, bool)
+            or not isinstance(terminal_timeout, int)
+            or terminal_timeout < 1
+            or terminal_timeout > 600
+    ):
+        terminal_timeout = default_terminal_config["timeout_seconds"]
+
+    max_output_chars = terminal_config.get("max_output_chars")
+    if (
+            # 单独排除 bool，因为 Python 中 bool 是 int 的子类，True 否则会被当成 1
+            isinstance(max_output_chars, bool)
+            or not isinstance(max_output_chars, int)
+            # # 输出上限必须是正整数
+            or max_output_chars <= 0
+    ):
+        max_output_chars = default_terminal_config["max_output_chars"]
+
+    config["terminal"] = {
+        "timeout_seconds": terminal_timeout,
+        "max_output_chars": max_output_chars,
     }
 
     checkpoints_config = config.get("checkpoints")
