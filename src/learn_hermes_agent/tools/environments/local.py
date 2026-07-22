@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import codecs
 import threading
 from collections import deque
 
@@ -522,3 +523,41 @@ def _build_subprocess_env(
             )
         ),
     )
+
+
+class LocalEnvironment:
+    def __init__(self, bash_path: str) -> None:
+        self.bash_path = bash_path
+
+    @staticmethod
+    def _drain_output(
+            proc: subprocess.Popen[bytes],
+            collector: _BoundedOutputCollector,
+    ) -> None:
+        """这里使用增量解码器，是因为 UTF-8 多字节字符可能刚好被两个 read(4096) 分开，不能对每个 chunk 独立 decode()"""
+        stream = proc.stdout
+        if stream is None:
+            return
+
+        decoder = codecs.getincrementaldecoder(
+            "utf-8"
+        )(errors="replace")
+
+        try:
+            while True:
+                chunk = stream.read(4096)
+                if not chunk:
+                    break
+
+                collector.append(
+                    decoder.decode(chunk)
+                )
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                tail = decoder.decode(b"", final=True)
+                if tail:
+                    collector.append(tail)
+            except UnicodeDecodeError:
+                pass
