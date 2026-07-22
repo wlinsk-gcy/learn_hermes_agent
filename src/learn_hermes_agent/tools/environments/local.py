@@ -353,10 +353,11 @@ class _BoundedOutputCollector:
     有界输出收集器
 
     """
+
     def __init__(self, max_chars: int) -> None:
         self.max_chars = max(1, int(max_chars))
-        self._head_limit = int(self.max_chars * 0.4) # 前 40% 保存输出开头。
-        self._tail_limit = self.max_chars - self._head_limit # 后 60% 保存输出结尾
+        self._head_limit = int(self.max_chars * 0.4)  # 前 40% 保存输出开头。
+        self._tail_limit = self.max_chars - self._head_limit  # 后 60% 保存输出结尾
 
         self._head: list[str] = []
         self._tail: deque[str] = deque()
@@ -365,12 +366,57 @@ class _BoundedOutputCollector:
         self._tail_chars = 0
         self._total_chars = 0
 
-        self._lock = threading.Lock() # 用于后续读取线程和主线程之间同步
+        self._lock = threading.Lock()  # 用于后续读取线程和主线程之间同步
 
     @property
     def total_chars(self) -> int:
         with self._lock:
-            return self._total_chars # 记录未经裁剪的总字符数
+            return self._total_chars  # 记录未经裁剪的总字符数
+
+    def append(self, text: str) -> None:
+        """开头写满后不再变化；结尾使用 deque 持续淘汰最旧内容，内存始终受上限约束"""
+        if not text:
+            return
+
+        with self._lock:
+            self._total_chars += len(text)
+            start = 0
+
+            if self._head_chars < self._head_limit:
+                take = min(
+                    self._head_limit - self._head_chars,
+                    len(text),
+                )
+                if take:
+                    self._head.append(text[:take])
+                    self._head_chars += take
+                    start = take
+
+            remaining = text[start:]
+            if not remaining or self._tail_limit <= 0:
+                return
+
+            if len(remaining) >= self._tail_limit:
+                self._tail.clear()
+                self._tail.append(
+                    remaining[-self._tail_limit:]
+                )
+                self._tail_chars = self._tail_limit
+                return
+
+            self._tail.append(remaining)
+            self._tail_chars += len(remaining)
+
+            while self._tail_chars > self._tail_limit:
+                excess = self._tail_chars - self._tail_limit
+                first = self._tail[0]
+
+                if len(first) <= excess:
+                    self._tail.popleft()
+                    self._tail_chars -= len(first)
+                else:
+                    self._tail[0] = first[excess:]
+                    self._tail_chars -= excess
 
 
 def _strip_ansi(value: str) -> str:
