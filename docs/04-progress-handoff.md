@@ -1936,6 +1936,12 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
   - Windows 使用新进程组和 `taskkill /T /F`，POSIX 使用新 session 和进程组信号。
   - timeout 使用 monotonic deadline，返回码固定为 124，并验证孙进程不会在超时后继续写文件。
   - 长 secret 使用 `[REDACTED]`，短 secret 使用等长 `*`，保证脱敏后结果仍受 `max_output_chars` 约束。
+- Task 4 terminal tool 与 Registry 注册已完成：
+  - schema 只暴露 `command`、`timeout` 和 `workdir`，不暴露 background 或 PTY 参数。
+  - handler 统一返回 `output`、`exit_code`、`error`，并保留 hardline defense-in-depth。
+  - 引号和转义感知的前台检查拒绝 `nohup`、`disown`、`setsid` 和独立后台 `&`，同时避免误判 shell 组合操作符。
+  - `check_fn` 通过 `find_bash()` 健康探测控制模型可见性，Registry 将 terminal 归入 `terminal` toolset。
+  - `model_tools` 的 approval preflight 已验证先于 handler：危险命令在 `ask` 模式返回 `approval_required`，hardline 在 `auto + yolo` 下仍为 `blocked`。
 
 ### 修改文件
 
@@ -1943,6 +1949,8 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
 - `src/learn_hermes_agent/cli/main.py`
 - `src/learn_hermes_agent/tools/environments/__init__.py`
 - `src/learn_hermes_agent/tools/environments/local.py`
+- `src/learn_hermes_agent/tools/terminal_tool.py`
+- `src/learn_hermes_agent/tools/registry.py`
 - `docs/04-progress-handoff.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`
@@ -1979,9 +1987,14 @@ task-2-ok
 execute-final-bound-ok
 task-3-output-secret-truncation-ok
 task-3-timeout-tree-ok
+terminal-registry-schema-ok
+terminal-real-execution-ok
+terminal-background-block-ok
+terminal-approval-preflight-ok
+terminal-hardline-preflight-ok
 ```
 
-`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
+`uv run learn-hermes-agent tools` 已确认 Bash 可用时共暴露九个工具，且 terminal schema 中不存在 background/PTY 参数。`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
 
 ```powershell
 $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
@@ -1996,15 +2009,17 @@ $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
 - 有界输出在读取过程中保留头 40% 和尾 60%，不能先无限收集再裁剪。
 - 输出脱敏不能扩大最终字符串；否则 collector 的严格上限会在后处理阶段失效。
 - timeout 必须清理进程树而不是只终止 Bash 父进程，退出码统一为 124。
+- terminal 的 `check_fn` 只决定工具是否暴露，不负责 approval；approval 仍由 `model_tools` 在 handler 前统一执行。
+- 前台限定既要拒绝明确的后台语法，也要识别引号、转义和 `&&`、`&>`、`2>&1`、`|&`、`;&` 等非后台组合，避免明显误报。
 
 ### 尚未完成
 
-- terminal schema、handler、Registry 注册和 `check_fn`。
-- destructive terminal checkpoint、集中回归和 Batch 6 closeout。
+- destructive-command helper 与 terminal checkpoint 接入。
+- 集中回归和 Batch 6 closeout。
 
 ### 下一步
 
-继续 Task 4：增加 terminal schema、handler、环境可用性 `check_fn` 和 Registry 注册；仍不开始 destructive checkpoint 接入、background、PTY、process 或远程 backend。
+继续 Task 5：增加独立 destructive-command helper，为后续仅对 destructive terminal 创建 checkpoint 提供统一判定；仍不开始 background、PTY、process 或远程 backend。
 
 ## 后续进度模板
 

@@ -26,7 +26,7 @@
 - [x] Task 1：增加 terminal 配置。
 - [x] Task 2：建立 local environment 基础和有界输出。
 - [x] Task 3：实现 LocalEnvironment 前台进程生命周期。
-- [ ] Task 4：增加 terminal schema、handler 和 Registry 注册。
+- [x] Task 4：增加 terminal schema、handler 和 Registry 注册。
 - [ ] Task 5：增加 destructive-command helper。
 - [ ] Task 6：接入 destructive terminal checkpoint。
 - [ ] Task 7：集中安全与回归验证。
@@ -971,7 +971,11 @@ def _strip_quoted_content(command: str) -> str:
 
     for char in command:
         if escaped:
-            result.append(" " if quote else char)
+            result.append(
+                " "
+                if quote or char in {";", "&", "|"}
+                else char
+            )
             escaped = False
             continue
 
@@ -1014,7 +1018,7 @@ def _contains_lone_background_ampersand(
             else ""
         )
 
-        if previous in {"&", "<", ">"}:
+        if previous in {"&", "<", ">", "|", ";"}:
             continue
         if following in {"&", ">"}:
             continue
