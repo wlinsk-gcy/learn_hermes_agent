@@ -260,3 +260,17 @@ def _resolve_workdir(raw_workdir: object) -> Path:
         )
 
     return workdir
+
+
+def check_terminal_requirements() -> bool:
+    """
+    找到并成功探测 Bash：返回 True，Registry 可以向 LLM 暴露 terminal。
+    Bash 缺失或所有候选触发明确运行错误：返回 False，Registry 隐藏 terminal。
+    不执行用户命令，也不处理 approval。
+    """
+    try:
+        find_bash()
+    except RuntimeError:
+        return False
+
+    return True
