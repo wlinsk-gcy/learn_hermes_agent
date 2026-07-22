@@ -196,3 +196,35 @@ def _foreground_error(command: str) -> str | None:
         )
 
     return None
+
+
+def _provider_secret_env_names(
+        config: dict[str, Any],
+) -> set[str]:
+    """
+    除了三个常见 API key，还动态收集当前 Provider 和所有 fallback Provider 使用的环境变量名，传给LocalEnvironment 清理。
+    """
+    names = set(_STATIC_SENSITIVE_ENV_NAMES)
+
+    model = config.get("model")
+    if not isinstance(model, dict):
+        return names
+
+    api_key_env = model.get("api_key_env")
+    if isinstance(api_key_env, str) and api_key_env:
+        names.add(api_key_env)
+
+    fallbacks = model.get("fallbacks")
+    if isinstance(fallbacks, list):
+        for fallback in fallbacks:
+            if not isinstance(fallback, dict):
+                continue
+
+            fallback_env = fallback.get("api_key_env")
+            if (
+                    isinstance(fallback_env, str)
+                    and fallback_env
+            ):
+                names.add(fallback_env)
+
+    return names
