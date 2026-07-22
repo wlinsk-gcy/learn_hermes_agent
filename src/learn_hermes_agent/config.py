@@ -29,10 +29,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "protect_first_n": 2,
         "protect_last_n": 6,
     },
+    "terminal": {
+        "timeout_seconds": 180, # terminal 默认最多运行 180 秒。
+        "max_output_chars": 50_000, # 最多向上层返回 50000 个字符，避免输出无限增长。
+    },
     # checkpoints是文件修改前的快照生成策略，例如write_file和patch。
     "checkpoints": {
-        "enabled": False, # 启用后会先保存 workspace 当前状态，再修改文件。修改出错时，可以用 checkpoint 恢复修改前内容。
-        "max_snapshots": 20, # 每个 workspace 最多保留 20 个快照。
+        "enabled": False,  # 启用后会先保存 workspace 当前状态，再修改文件。修改出错时，可以用 checkpoint 恢复修改前内容。
+        "max_snapshots": 20,  # 每个 workspace 最多保留 20 个快照。
     },
     "security": {
         "approval_mode": "ask",
