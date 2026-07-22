@@ -16,7 +16,73 @@ _BASH_EXTERNAL_PROGRAM_PROBE = (
 )
 _bash_starts_cache: dict[str, bool] = {}
 _bash_probe_details_cache: dict[str, str] = {}
+"""
+ASLR（Address Space Layout Randomization，地址空间布局随机化）是一项内存安全机制。
+
+它会让程序、动态库、堆栈等每次运行时加载到不同的内存地址，从而增加攻击者利用内存漏洞的难度。
+
+这里查询的是 Windows 的：
+
+ForceRelocateImages
+
+也就是 Mandatory ASLR。它会强制重定位某些没有主动支持 ASLR 的程序。
+
+Git for Windows 的 MSYS 通过模拟 fork() 创建子进程，对内存地址布局有特殊要求。Mandatory ASLR 可能破坏这种布局，导致：
+
+dofork:
+child_copy:
+0xc0000142
+0xc0000005
+
+因此 Hermes 的流程是：
+
+找到 bash.exe
+    → 启动 Bash
+    → 执行外部 MSYS 程序 true/cat
+    → 失败时检查是否像 MSYS/ASLR 故障
+    → 给出针对 Git 程序的修复命令
+
+Hermes 不会自动关闭 ASLR，因为这是系统安全策略。它只提供针对 Git Bash 程序的例外配置建议，而不是关闭系统全局防护。
+
+你机器返回：
+
+mandatory-aslr=False
+
+这里只表示系统没有强制启用 ForceRelocateImages，不代表 Windows 的所有 ASLR 防护都被关闭。
+"""
 _mandatory_aslr_enabled_cache: bool | None = None
+
+
+def _git_bash_aslr_help(
+        bash: str,
+        details: str = "",
+) -> str:
+    """只生成错误信息，不修改系统安全策略"""
+    git_root = _git_root_from_bash(bash)
+    escaped_root = git_root.replace("'", "''")
+    detail_line = (
+        f"\nGit Bash probe output: {details[:500]}"
+        if details
+        else ""
+    )
+
+    return (
+        f"Git Bash at {bash} cannot launch required MSYS child "
+        "processes while Windows Mandatory ASLR "
+        "(ForceRelocateImages) is enabled, or its output matches "
+        f"that Git-for-Windows failure class.{detail_line}\n"
+        "Reinstalling Git will not change the Windows mitigation "
+        "policy. Open PowerShell as Administrator and run:\n"
+        f"$gitRoot = '{escaped_root}'\n"
+        'Get-Item "$gitRoot\\bin\\bash.exe", '
+        '"$gitRoot\\usr\\bin\\*.exe" '
+        "-ErrorAction SilentlyContinue | ForEach-Object { "
+        "Set-ProcessMitigation -Name $_.FullName "
+        "-Disable ForceRelocateImages }\n"
+        "Then restart Hermes. If the override is blocked or later "
+        "re-applied, ask your Windows administrator to allow this "
+        "per-program exception."
+    )
 
 
 def _windows_hide_flags() -> int:
@@ -151,6 +217,7 @@ def _mandatory_aslr_enabled() -> bool | None:
 def find_bash() -> str | None:
     """在 Windows 优先寻找 Git Bash 的标准安装位置；其他系统优先寻找 Bash，并保留 /bin/sh 作为最后降级"""
     if not _IS_WINDOWS:
+        # POSIX分支
         candidates = [
             shutil.which("bash"),
             "/usr/bin/bash",
@@ -163,22 +230,47 @@ def find_bash() -> str | None:
                 return str(Path(candidate))
         return None
 
-    program_files = os.environ.get(
-        "ProgramFiles",
-        r"C:\Program Files",
-    )
-    program_files_x86 = os.environ.get(
-        "ProgramFiles(x86)",
-        r"C:\Program Files (x86)",
-    )
-    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    candidates: list[Path] = []
 
-    candidates = [
-        Path(program_files) / "Git" / "bin" / "bash.exe",
-        Path(program_files_x86) / "Git" / "bin" / "bash.exe",
-    ]
+    custom = os.environ.get("HERMES_GIT_BASH_PATH")
+    if custom:
+        custom_path = Path(custom)
+        if custom_path.is_file():
+            candidates.append(custom_path)
+
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
     if local_app_data:
-        candidates.append(
+        portable_root = Path(local_app_data) / "hermes" / "git"
+        for candidate in (
+                portable_root / "bin" / "bash.exe",
+                portable_root / "usr" / "bin" / "bash.exe",
+        ):
+            if candidate.is_file() and candidate not in candidates:
+                candidates.append(candidate)
+
+    standard_candidates = [
+        Path(
+            os.environ.get(
+                "ProgramFiles",
+                r"C:\Program Files",
+            )
+        )
+        / "Git"
+        / "bin"
+        / "bash.exe",
+        Path(
+            os.environ.get(
+                "ProgramFiles(x86)",
+                r"C:\Program Files (x86)",
+            )
+        )
+        / "Git"
+        / "bin"
+        / "bash.exe",
+    ]
+
+    if local_app_data:
+        standard_candidates.append(
             Path(local_app_data)
             / "Programs"
             / "Git"
@@ -186,8 +278,11 @@ def find_bash() -> str | None:
             / "bash.exe"
         )
 
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
+    for candidate in standard_candidates:
+        if candidate.is_file() and candidate not in candidates:
+            candidates.append(candidate)
 
-    return shutil.which("bash.exe")
+    for candidate in candidates:
+        return str(candidate)
+
+    return shutil.which("bash")
