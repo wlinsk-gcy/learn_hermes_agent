@@ -1907,6 +1907,95 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 
 Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Local Foreground Terminal；开始前必须重新分析最新版 Hermes 的 terminal tool、approval ordering、local execution backend、timeout、cwd/workspace 和结果语义，并先形成独立设计与实施计划，不直接写代码。
 
+## 2026-07-22 Phase 10 Batch 6 Local Foreground Terminal 进行中
+
+### 本次目标
+
+在现有 Registry v2、顺序 ToolExecutor、approval preflight 和 checkpoint 链上增加与最新版 Hermes 设计意图一致的本地 Bash 前台 terminal；当前先完成配置、Bash 可用性和有界输出基础，不提前实现 background、PTY、process 或远程 backend。
+
+### 已完成
+
+- 已写入并确认独立设计与实施计划：
+  - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`
+  - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`
+- Task 1 terminal 配置已完成：
+  - 默认 `timeout_seconds=180`。
+  - 默认 `max_output_chars=50000`。
+  - timeout 规范化范围为 1 至 600，bool 不作为 int 接受。
+  - doctor 可观察最终 terminal 配置。
+- Task 2 local environment 基础已完成：
+  - 新增 `tools/environments` 包和 `local.py`。
+  - Windows Bash 候选顺序对齐最新版 Hermes：`HERMES_GIT_BASH_PATH`、Hermes portable Git、Git for Windows 标准目录、PATH。
+  - `_bash_starts()` 使用 `/usr/bin/true` 和 `/usr/bin/cat` 验证外部 MSYS 程序，而不是只验证 Bash builtin。
+  - 支持坏自定义候选回退、MSYS spawn 故障分类、Mandatory ASLR 查询和针对性诊断文本。
+  - 新增线程安全的 40/60 有界输出 collector。
+  - 新增常见 ANSI/CSI 清理和已知 secret 精确值替换 helper。
+
+### 修改文件
+
+- `src/learn_hermes_agent/config.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `src/learn_hermes_agent/tools/environments/__init__.py`
+- `src/learn_hermes_agent/tools/environments/local.py`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`
+- `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`
+
+### 对照的 Hermes 源码
+
+- `tools/environments/local.py`
+  - `_find_bash()` 的候选优先级和健康候选选择。
+  - `_bash_starts()` 的外部 MSYS 程序探测与进程内缓存。
+  - Mandatory ASLR/MSYS spawn 故障分类和修复说明。
+- `tools/terminal_tool.py`
+  - local terminal 的 schema、handler、环境可用性和结果边界。
+- `tools/environments/base.py`
+  - 有界输出、timeout 退出码和进程清理意图。
+
+### 验证方式
+
+已运行并观察：
+
+```text
+task-1-ok
+collector-state-ok
+collector-append-ok
+collector-render-ok
+output-cleaning-ok
+bash-probe-ok
+bash-diagnostics-helpers-ok
+mandatory-aslr=False
+aslr-help-ok
+find-bash-healthy-ok
+find-bash-missing-ok
+find-bash-fallback-ok
+task-2-ok
+```
+
+`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
+
+```powershell
+$env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
+```
+
+### 设计结论
+
+- 学习项目按阶段复刻 Hermes，但 runtime 已承担的 Bash 候选和启动探测语义不能用项目自创的 `git.exe` 路径推导替代。
+- 本批识别已有 Hermes portable Git 路径，但不复制 `install.ps1` 的下载和安装职责。
+- `find_bash()` 必须按健康状态选候选，文件存在不等于 MSYS 外部程序可运行。
+- Mandatory ASLR 只做查询和诊断，代码不得自动关闭系统安全策略。
+- 有界输出在读取过程中保留头 40% 和尾 60%，不能先无限收集再裁剪。
+
+### 尚未完成
+
+- Task 3 `LocalEnvironment.execute()`、环境变量清理、stdout/stderr 合流、timeout 和进程树清理。
+- terminal schema、handler、Registry 注册和 `check_fn`。
+- destructive terminal checkpoint、集中回归和 Batch 6 closeout。
+
+### 下一步
+
+继续 Task 3：实现 LocalEnvironment 前台进程生命周期。先增加环境清理 helper，再逐步实现 Popen、后台 drain、timeout 和进程树清理；仍不开始 background、PTY、process 或远程 backend。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

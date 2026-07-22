@@ -21,6 +21,19 @@
 - 不自动提交；每个 Task 验证后由用户决定是否提交。
 - 不实现 background、PTY、process、远程 backend、跨调用 shell 状态、交互 approval UI 或并发 executor。
 
+## 执行状态（2026-07-22）
+
+- [x] Task 1：增加 terminal 配置。
+- [x] Task 2：建立 local environment 基础和有界输出。
+- [ ] Task 3：实现 LocalEnvironment 前台进程生命周期。
+- [ ] Task 4：增加 terminal schema、handler 和 Registry 注册。
+- [ ] Task 5：增加 destructive-command helper。
+- [ ] Task 6：接入 destructive terminal checkpoint。
+- [ ] Task 7：集中安全与回归验证。
+- [ ] Task 8：更新路线与交接文档。
+
+Task 2 执行时根据最新版 Hermes 源码修正了 Windows Bash 策略：不再从 PATH 中的 `git.exe` 自行推导安装目录，而是按 `HERMES_GIT_BASH_PATH`、Hermes portable Git、Git for Windows 标准目录和 PATH 的顺序收集候选，并用外部 MSYS 程序启动探测选择健康候选。Portable Git 的下载和安装仍不属于本批。
+
 ### Task 1：增加 terminal 配置
 
 **Files:**
