@@ -182,6 +182,11 @@ def execute_tool_calls_sequential(
                     function_args,
                     registry=agent.registry,
                     context=tool_context,
+                    # 这里的 lambda name, args, context 是从 model_tools.handle_function_call() 对 callback 的调用时传过来的。
+                    # 其中只有 agent 不是由 model_tools 传入的。它来自外层 execute_tool_calls_sequential() 的参数，这种行为叫做闭包。
+                    #  之所以这样设计，是因为 model_tools 不应该依赖或认识 AIAgent。它只定义通用 callback：
+                    # ToolExecutor 再通过 lambda 把自己持有的 agent 补进去。这样避免了 model_tools -> AIAgent 的反向依赖。
+                    before_dispatch=(lambda name, args, context: _ensure_file_checkpoint(agent,name,args,context,)),
                 )
 
         messages.append(
