@@ -418,6 +418,59 @@ class _BoundedOutputCollector:
                     self._tail[0] = first[excess:]
                     self._tail_chars -= excess
 
+    def render(self, *, suffix: str = "") -> str:
+        """suffix 用于保留 timeout 等重要说明。循环最多四次，是因为提示文字包含动态省略字符数，需要重新计算它自身占用的长度"""
+        with self._lock:
+            if len(suffix) >= self.max_chars:
+                return suffix[-self.max_chars:]
+
+            head = "".join(self._head)
+            tail = "".join(self._tail)
+            available = self.max_chars - len(suffix)
+
+            if self._total_chars <= available:
+                return head + tail + suffix
+
+            notice = ""
+            for _ in range(4):
+                content_budget = max(
+                    0,
+                    available - len(notice),
+                )
+                head_chars = int(content_budget * 0.4)
+                tail_chars = content_budget - head_chars
+                omitted = max(
+                    0,
+                    self._total_chars
+                    - head_chars
+                    - tail_chars,
+                )
+                updated = (
+                    "\n\n... [OUTPUT TRUNCATED - "
+                    f"{omitted} chars omitted out of "
+                    f"{self._total_chars} total] ...\n\n"
+                )
+                if updated == notice:
+                    break
+                notice = updated
+
+            content_budget = max(
+                0,
+                available - len(notice),
+            )
+            head_chars = int(content_budget * 0.4)
+            tail_chars = content_budget - head_chars
+            rendered_tail = (
+                tail[-tail_chars:] if tail_chars else ""
+            )
+
+            return (
+                    head[:head_chars]
+                    + notice[:available]
+                    + rendered_tail
+                    + suffix
+            )
+
 
 def _strip_ansi(value: str) -> str:
     """删除颜色、光标控制等 ANSI 转义序列"""
