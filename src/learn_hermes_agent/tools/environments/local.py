@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import logging
 import ntpath
 import os
@@ -10,6 +11,11 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = os.name == "nt"
+# 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
+# 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+)
 
 _BASH_EXTERNAL_PROGRAM_PROBE = (
     "/usr/bin/true; /usr/bin/cat --version >/dev/null"
@@ -338,3 +344,20 @@ def find_bash() -> str:
         "Install it from: https://git-scm.com/download/win\n"
         "Or set HERMES_GIT_BASH_PATH to your bash.exe location."
     )
+
+
+def _strip_ansi(value: str) -> str:
+    """删除颜色、光标控制等 ANSI 转义序列"""
+    return _ANSI_ESCAPE_RE.sub("", value)
+
+
+def _redact_known_values(
+        value: str,
+        secret_values: tuple[str, ...],
+) -> str:
+    """将已知 secret 的精确值替换为 [REDACTED]"""
+    result = value
+    for secret in secret_values:
+        if secret:
+            result = result.replace(secret, "[REDACTED]")
+    return result
