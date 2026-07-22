@@ -195,7 +195,7 @@ terminal:
 - Windows 候选不能只检查文件存在；必须用外部 MSYS 程序执行探测选择第一个健康候选，并保留 Mandatory ASLR/MSYS spawn 故障诊断。
 - 本批只识别已有 portable Git，不复制 `install.ps1` 的下载和安装职责。
 
-`check_terminal_requirements()` 只判断 shell 是否可用，不执行审批，不创建进程，不承担权限边界。返回 False 或抛异常时，Registry 按既有 fail-closed 规则隐藏 terminal definition。
+`check_terminal_requirements()` 只判断 shell 是否可用，不执行审批、不运行用户命令，也不承担权限边界。Windows 下首次检查会通过 `find_bash()` 启动短暂的外部 MSYS 程序 probe，结果按 Bash 路径在进程内缓存；返回 False 或抛异常时，Registry 按既有 fail-closed 规则隐藏 terminal definition。
 
 ## 本地执行与进程生命周期
 

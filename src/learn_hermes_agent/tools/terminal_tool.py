@@ -228,3 +228,35 @@ def _provider_secret_env_names(
                 names.add(fallback_env)
 
     return names
+
+
+def _resolve_workdir(raw_workdir: object) -> Path:
+    """
+    这里不限制 workdir 必须位于 workspace 内，因为本批的 local terminal 是宿主机 shell，不是 workspace sandbox；但必须是存在的目录。
+    """
+    if raw_workdir is None or raw_workdir == "":
+        return Path.cwd().resolve()
+
+    if not isinstance(raw_workdir, str):
+        raise ValueError(
+            "terminal workdir must be a string"
+        )
+
+    workdir = Path(raw_workdir).expanduser()
+
+    if not workdir.is_absolute():
+        workdir = Path.cwd() / workdir
+
+    workdir = workdir.resolve()
+
+    if not workdir.exists():
+        raise ValueError(
+            f"terminal workdir does not exist: {workdir}"
+        )
+
+    if not workdir.is_dir():
+        raise ValueError(
+            f"terminal workdir is not a directory: {workdir}"
+        )
+
+    return workdir
