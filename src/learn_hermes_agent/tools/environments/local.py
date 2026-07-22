@@ -37,7 +37,8 @@ def _bash_starts(bash: str) -> bool:
                 "--noprofile",
                 "--norc",
                 "-c",
-                _BASH_EXTERNAL_PROGRAM_PROBE, # 这里故意执行 /usr/bin/true 和 /usr/bin/cat，而不只是 exit 0：某些 Git Bash 可以启动内置命令，但因 MSYS/ASLR 问题无法启动外部程序
+                _BASH_EXTERNAL_PROGRAM_PROBE,
+                # 这里故意执行 /usr/bin/true 和 /usr/bin/cat，而不只是 exit 0：某些 Git Bash 可以启动内置命令，但因 MSYS/ASLR 问题无法启动外部程序
             ],
             capture_output=True,
             text=True,
@@ -64,6 +65,32 @@ def _bash_starts(bash: str) -> bool:
 
     _bash_starts_cache[bash] = ok
     return ok
+
+
+def _looks_like_msys_spawn_failure(details: str) -> bool:
+    """识别典型 MSYS/ASLR 子进程启动错误"""
+    lowered = details.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "dofork:",
+            "child_copy:",
+            "0xc0000142",
+            "0xc0000005",
+        )
+    )
+
+
+def _git_root_from_bash(bash: str) -> str:
+    r"""同时支持 <git>\bin\bash.exe 和 <git>\usr\bin\bash.exe 两种布局"""
+    bin_dir = ntpath.dirname(ntpath.normpath(bash))
+    if ntpath.basename(bin_dir).lower() != "bin":
+        return ntpath.dirname(bin_dir)
+
+    parent = ntpath.dirname(bin_dir)
+    if ntpath.basename(parent).lower() == "usr":
+        return ntpath.dirname(parent)
+    return parent
 
 
 def find_bash() -> str | None:
