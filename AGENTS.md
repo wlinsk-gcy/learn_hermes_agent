@@ -54,6 +54,7 @@
 - Phase 10 Batch 3 ToolRegistry v2 已完成：`toolset`、`check_fn`、`generation` 和可用定义过滤已接入。
 - Phase 10 Batch 4 Minimal ToolExecutor 已完成：已建立 Provider definitions 范围快照和模块级顺序执行器。
 - Phase 10 Batch 5 Minimal Checkpoint 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期和安全 preflight 后的自动写前 checkpoint 已实现。
-- `terminal`、checkpoint CLI、rollback UX、并发或 segmented ToolExecutor 尚未实现。
+- Phase 10 Batch 6 Local Foreground Terminal 已完成：本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint 已实现。
+- checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发或 segmented ToolExecutor 尚未实现。
 
-下一步是 Phase 10 Batch 6 Local Foreground Terminal。开始设计前必须重新对齐最新版 Hermes 的 terminal、approval 和 execution backend 源码；先完成独立设计，不直接实现。
+Phase 10 Batch 6 已完成。开始下一批前必须重新对齐最新版 Hermes，再决定先实现 approval surface 还是 persistent local session；先完成独立设计，不直接实现。

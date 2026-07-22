@@ -385,7 +385,7 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 10：Security / Approval / Execution
 
-**状态：Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 已完成；下一步为 Batch 6 Local Foreground Terminal 的源码对齐和设计**
+**状态：Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5、Batch 6 已完成；下一步先重新对齐最新版 Hermes，再设计后续批次**
 
 **目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、checkpoint 和 terminal。
 
@@ -482,14 +482,22 @@ Batch 4 暂未实现 executor 类、并发、segmented execution、middleware、
 - `write_file` / `patch` 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。
 - checkpoint 失败 fail-open，安全 preflight fail-closed。
 - 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
-- 暂不实现 checkpoint CLI、rollback UX、diff、全局容量限制、自动维护、legacy migration 或 terminal checkpoint。
+- Batch 5 暂不实现 checkpoint CLI、rollback UX、diff、全局容量限制、自动维护、legacy migration 或 terminal checkpoint；terminal checkpoint 延至 Batch 6。
 
-**后续批次：**
+**Batch 6：Local Foreground Terminal（已完成）**
 
-- Batch 6：Terminal Local Backend
-  - 最后接入最小 local foreground `terminal` tool。
-  - 执行前调用 `check_command_approval()`，hardline block 永远不可被 `force`、`yolo` 或 `auto` 绕过。
-  - 暂不实现 Docker/SSH/Modal/Daytona、PTY、background process 或 streaming output。
+- 新增本地 Bash/Git Bash 前台 terminal，schema 只包含 `command`、`timeout`、`workdir`。
+- Windows Bash 候选、健康探测和 Mandatory ASLR 诊断对齐 Hermes；不自动修改系统安全策略。
+- 接入 timeout、进程树清理、40/60 有界输出、ANSI 清理和 Provider secret 环境过滤。
+- terminal 通过 `toolset` / `check_fn` 注册；Bash 可用时模型共看到九个工具。
+- 执行前复用 `check_command_approval()`；hardline block 永远不可被 `yolo` 或 `auto` 绕过。
+- workspace 内 destructive terminal 在 post-preflight callback 中创建 best-effort checkpoint；workspace 外不创建。
+- 对齐 Hermes HEAD `477c08b44`；暂不实现 approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发 executor 或 checkpoint CLI。
+
+**下一步：**
+
+- 重新对齐最新版 Hermes 的 approval surface、session cwd 和 persistent local terminal。
+- 先完成设计决策，再确定后续批次；不直接进入实现。
 
 ## Phase 11：Gateway
 

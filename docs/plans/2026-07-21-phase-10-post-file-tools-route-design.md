@@ -12,8 +12,8 @@
 - Batch 2C 已完成文件展示文本回写防护。
 - Batch 2D 已完成精确字符串替换版 `patch`。
 - Batch 2E 已完成最小 `search_files`，包括正则搜索、结果限制、统一读路径 preflight 和候选文件级安全过滤。
-- Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor 和 Batch 5 Minimal Checkpoint 已按本路线完成。
-- 尚未实现 terminal、checkpoint CLI、rollback UX、并发工具执行、middleware 或 guardrails。
+- Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor、Batch 5 Minimal Checkpoint 和 Batch 6 Local Foreground Terminal 已按本路线完成。
+- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发工具执行、middleware 或 guardrails。
 
 ## 最新 Hermes 对齐结论
 
@@ -67,7 +67,7 @@ CLI
 4. Batch 5：最小 checkpoint。
 5. Batch 6：local foreground terminal。
 
-截至 2026-07-22，顺序中的 Batch 2E 至 Batch 5 均已完成。Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；下一步是 Batch 6 的最新源码对齐与独立设计。
+截至 2026-07-22，顺序中的 Batch 2E 至 Batch 6 均已完成。Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐同一 HEAD 的 terminal、local environment、destructive classifier 和 checkpoint ordering。
 
 ## Batch 3 边界
 
@@ -109,18 +109,27 @@ CLI
 - 每个 Provider/tool iteration 重置 workspace 去重状态。
 - `write_file` / `patch` 在安全 preflight 通过后、handler 前创建 checkpoint。
 - checkpoint fail-open，安全 preflight fail-closed。
-- 默认关闭；未实现 checkpoint CLI、rollback UX、terminal 或并发 executor。
+- 默认关闭；Batch 5 本身未实现 checkpoint CLI、rollback UX、terminal 或并发 executor，terminal 延至 Batch 6。
+
+## Batch 6 执行结果
+
+- terminal 注册为 `toolset="terminal"`，通过 Bash 健康探测 `check_fn` 控制可见性。
+- local backend 使用 Bash/Git Bash，只支持前台命令；不开放 background、PTY、process 或远程 backend。
+- timeout 清理进程树，输出在读取过程中有界，并清理 ANSI 和 Provider secret。
+- approval preflight 先于 checkpoint 和 handler；hardline 不可被 `auto` / `yolo` 绕过。
+- workspace 内 destructive terminal 创建 best-effort checkpoint，workspace 外 terminal 不创建学习项目 checkpoint。
+- 下一批开始前重新对齐最新版 Hermes，再决定 approval surface 与 persistent local session 的先后顺序。
 
 ## 风险与回滚
 
 - Registry v2 使用带默认值的新字段，现有工具注册代码无需一次性迁移；如有问题可忽略新增字段。
 - ToolExecutor 提取期间保留 `model_tools.handle_function_call()`，调用方无需同步迁移。
-- checkpoint 保持未注册状态；terminal 尚未注册，因此 Batch 3 至 Batch 5 没有扩大命令执行权限。
+- checkpoint 保持未注册状态；terminal 可通过移除 `discover_builtin_tools()` 中的注册立即回滚模型命令执行能力。
 
 ## 验收标准
 
 - Batch 2E 的文件工具行为有完整、可重复的手工验证记录。
 - roadmap 与 handoff 不再停留在 Batch 1 / Batch 2C。
-- Batch 3、Batch 4、Batch 5 已按推荐顺序完成并通过集中回归。
-- 下一步明确为 Batch 6 Local Foreground Terminal 的源码对齐和独立设计，不直接实现。
+- Batch 3、Batch 4、Batch 5、Batch 6 已按推荐顺序完成并通过集中回归。
+- 下一步明确为重新对齐最新版 Hermes 并形成新的设计决策，不直接实现 approval UI、persistent session、后台或远程执行。
 - 后续每批仍按接口一致性、`compileall`、CLI 手工行为和轻量不变量验证，不默认新增测试文件。

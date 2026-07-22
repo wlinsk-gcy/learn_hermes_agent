@@ -95,12 +95,13 @@
 - Phase 10 Batch 3：已完成 ToolRegistry v2，包括 toolset、check_fn、generation、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：已完成 Minimal ToolExecutor，包括 Provider definitions 范围快照、模型参数解析、顺序执行和 tool result 追加。
 - Phase 10 Batch 5：已完成 Minimal Checkpoint，包括配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的自动写前 checkpoint。
+- Phase 10 Batch 6：已完成 Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal 注册和 workspace 内 destructive terminal checkpoint。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现 checkpoint CLI、rollback UX、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -1907,7 +1908,7 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 
 Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Local Foreground Terminal；开始前必须重新分析最新版 Hermes 的 terminal tool、approval ordering、local execution backend、timeout、cwd/workspace 和结果语义，并先形成独立设计与实施计划，不直接写代码。
 
-## 2026-07-22 Phase 10 Batch 6 Local Foreground Terminal 进行中
+## 2026-07-22 Phase 10 Batch 6 Local Foreground Terminal 已完成
 
 ### 本次目标
 
@@ -1952,6 +1953,11 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
   - 默认和相对 `workdir` 以 `Path.cwd()` 为基准，与当前 terminal handler 的实际解析语义一致；`tool_context.workspace_root` 只承担 checkpoint 边界。
   - approval preflight 仍先于 callback；`approval_required` 不调用 callback，也不执行 handler。
   - checkpoint callback 异常仍由 `model_tools` 吞掉并记录，handler 继续执行，保持 fail-open。
+- Task 7 集中安全与回归验证已完成：
+  - stub handler 覆盖 `ask`、`deny`、`auto`、`yolo` 和 hardline，未执行真实危险命令。
+  - compileall、doctor、九工具 definitions、echo CLI、真实 terminal CLI 和 tool-demo 消息链均通过。
+  - AST/schema 检查确认没有 `shell=True`、远程 backend、process registry、background/PTY schema 参数或新增测试文件。
+  - Batch 6 相关源码和文档通过冲突标记、尾随空白和 Markdown 围栏检查。
 
 ### 修改文件
 
@@ -1963,7 +1969,12 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
 - `src/learn_hermes_agent/tools/registry.py`
 - `src/learn_hermes_agent/agent/tool_dispatch_helpers.py`
 - `src/learn_hermes_agent/agent/tool_executor.py`
+- `AGENTS.md`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
 - `docs/04-progress-handoff.md`
+- `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`
+- `docs/plans/2026-07-21-phase-10-post-file-tools-route-design.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`
 
@@ -1977,6 +1988,10 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
   - local terminal 的 schema、handler、环境可用性和结果边界。
 - `tools/environments/base.py`
   - 有界输出、timeout 退出码和进程清理意图。
+- `agent/tool_dispatch_helpers.py`
+  - `_is_destructive_command()` 的独立文件变更启发式。
+- `agent/tool_executor.py`
+  - approval/guard 通过后、handler 前的 destructive terminal checkpoint 顺序。
 
 ### 验证方式
 
@@ -2009,13 +2024,22 @@ task-6-checkpoint-boundary-ok
 task-6-approval-before-checkpoint-ok
 task-6-approved-order-ok
 task-6-checkpoint-fail-open-ok
+approval-ok
+tools-cli-ok count=9 terminal=command,timeout,workdir
+task-7-terminal-schema-scope-ok
+task-7-no-shell-true-ok
+task-7-no-remote-process-imports-ok
+task-7-checkpoint-hook-scope-ok
+task-7-no-test-files-ok
 ```
 
-`uv run learn-hermes-agent tools` 已确认 Bash 可用时共暴露九个工具，且 terminal schema 中不存在 background/PTY 参数。`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
+`uv run learn-hermes-agent tools` 已确认 Bash 可用时共暴露九个工具，且 terminal schema 中不存在 background/PTY 参数。echo CLI 返回 `terminal-regression`；terminal CLI 返回 `{"output": "terminal-cli", "exit_code": 0, "error": null}`；tool-demo 保持 `user -> assistant(tool_calls) -> tool -> assistant` 消息链。`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
 
 ```powershell
 $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
 ```
+
+PowerShell 向 Windows native 子进程传递包含空格的 JSON 时会拆分 argv；terminal CLI 验证使用 `--%` stop-parsing 保持完整 JSON 参数。当前学习目录没有可用 Git 元数据，因此 `git diff --check` / `git status` 无法运行；本轮改用相关文件冲突标记、尾随空白、Markdown 围栏和源码结构不变量检查。
 
 ### 设计结论
 
@@ -2032,14 +2056,13 @@ $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
 - destructive terminal checkpoint 必须使用与 handler 一致的 cwd 解析；当前最小前台 terminal 没有 session cwd，因此以进程 `Path.cwd()` 为默认基准。
 - workspace 外 terminal 可按 approval policy 执行，但不会触发学习项目的 workspace checkpoint。
 
-### 尚未完成
+### 尚未实现
 
-- 集中安全与回归验证。
-- Batch 6 closeout 文档更新。
+- approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发 executor 和 checkpoint CLI。
 
 ### 下一步
 
-继续 Task 7：集中验证 approval、checkpoint、terminal runtime、旧工具回归和范围边界；仍不开始 background、PTY、process 或远程 backend。
+Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必须重新分析最新版 Hermes 的 approval surface、session cwd 和 persistent local terminal，再决定两者的实现先后顺序并形成独立设计；当前不直接开始下一批代码。
 
 ## 后续进度模板
 

@@ -77,18 +77,20 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 3：ToolRegistry v2，增加 `toolset`、`check_fn`、registry `generation`、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：Minimal ToolExecutor，增加来自实际 Provider definitions 的 `valid_tool_names`，并由模块级顺序执行器负责模型工具范围检查、参数解析和 tool result 追加。
 - Phase 10 Batch 5：Minimal Checkpoint，包括默认关闭的配置、共享 shadow Git store、per-workspace ref/index、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的 `write_file` / `patch` 自动写前 checkpoint。
+- Phase 10 Batch 6：Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、ANSI 清理、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint。
 
-下一阶段是 Phase 10 Batch 6：Local Foreground Terminal。当前工具执行链的演进顺序是：
+Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
 ```text
-Minimal ToolExecutor
+ToolRegistry v2
+  -> Minimal ToolExecutor
   -> Minimal Checkpoint
   -> Local Foreground Terminal
 ```
 
-`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。terminal、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令；approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。下一批开始前必须重新读取最新版 Hermes，再决定 approval surface 与 persistent local session 的先后顺序。
 
 ## 文档地图
 
@@ -105,3 +107,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
 - `docs/plans/2026-07-21-phase-10-batch-4-minimal-tool-executor-plan.md`：Batch 4 实施计划。
 - `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-design.md`：Batch 5 Minimal Checkpoint 设计。
 - `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-plan.md`：Batch 5 实施计划。
+- `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`：Batch 6 Local Foreground Terminal 设计。
+- `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`：Batch 6 实施计划。

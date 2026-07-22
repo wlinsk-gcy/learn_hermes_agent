@@ -271,7 +271,7 @@
 
 ## Phase 10：安全、审批和执行环境
 
-状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety、Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor 与 Batch 5 Minimal Checkpoint 已完成；下一步是 Batch 6 Local Foreground Terminal 的源码对齐和设计。
+状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety、Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor、Batch 5 Minimal Checkpoint 与 Batch 6 Local Foreground Terminal 已完成。
 
 目标：复刻 Hermes 工具安全边界。
 
@@ -303,17 +303,24 @@
   - `model_tools` 在安全 preflight 通过后、handler 前调用可选 `before_dispatch` callback。
   - 顺序 ToolExecutor 只为 `write_file` / `patch` 创建 checkpoint；checkpoint 异常 fail-open。
   - 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
+- Batch 6：Local Foreground Terminal：
+  - 注册 `toolset="terminal"`，通过 Bash 健康探测 `check_fn` 控制模型可见性；九工具 definitions 已验证。
+  - 使用本地 Bash/Git Bash 执行前台命令，支持 1 至 600 秒 timeout、进程树清理、stdout/stderr 合流和严格有界输出。
+  - 清理 ANSI 控制序列，移除 Provider secret 环境变量，并保证结果脱敏不突破输出上限。
+  - approval preflight 继续先于 handler 和 checkpoint；hardline 不能被 `auto` 或 `yolo` 绕过。
+  - workspace 内 destructive terminal 在执行前创建 best-effort checkpoint；workspace 外命令不创建学习项目 checkpoint。
+  - 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。
 
-后续顺序：
+下一步设计顺序：
 
-1. Batch 6：先重新对齐最新版 Hermes terminal、approval 和 execution backend。
-2. 完成 Local Foreground Terminal 独立设计与实施计划。
-3. 设计确认后再分步实现，不直接扩展到远程或后台执行环境。
+1. 重新读取最新版 Hermes 的 approval surface、session cwd 和 persistent local terminal 实现。
+2. 比较“先补 approval surface”与“先补 persistent local session”的依赖、风险和验收边界。
+3. 形成新的独立设计和实施计划后再编码，不直接扩展到远程 backend、PTY 或后台进程。
 
 暂未实现：
 
-- terminal tool 和任何命令执行 backend。
 - checkpoint CLI、rollback UX、diff、全局容量限制、自动维护和 legacy migration。
+- approval UI、background/process、PTY、跨调用 cwd/env 和远程执行 backend。
 - 并发工具执行、middleware、guardrails。
 - Hermes 完整 registry 动态能力和完整 search/patch 高级模式。
 
@@ -328,7 +335,8 @@
 - `read_file`、`write_file`、`patch`、`search_files` 可通过 registry/dispatch 链路调用。
 - Registry 可按 toolset 和可用性生成稳定、过滤后的模型工具定义。
 - Agent 只能执行当前 Provider 请求实际暴露的工具；非法模型参数会形成配对的结构化 tool error。
-- 后续 terminal 接入时，hardline 命令必须继续优先于 yolo/auto 被阻断。
+- terminal 只暴露 `command`、`timeout`、`workdir`，安全命令可执行，timeout 返回 124 且清理进程树。
+- hardline 命令继续优先于 yolo/auto 被阻断；被阻断或待审批命令不执行 handler 或 checkpoint callback。
 
 ## Phase 11：Gateway
 
