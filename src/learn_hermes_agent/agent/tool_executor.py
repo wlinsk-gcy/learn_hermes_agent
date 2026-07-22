@@ -75,43 +75,78 @@ agent: AIAgent
 """
 
 
-def _ensure_file_checkpoint(
+def _ensure_checkpoint(
         agent: AIAgent,
         function_name: str,
         function_args: dict[str, Any],
         tool_context: ToolExecutionContext | None,
 ) -> None:
-    if function_name not in {"write_file", "patch"}:
-        return
-
     if (
             tool_context is None
             or not agent._checkpoint_mgr.enabled
     ):
         return
 
-    file_path = function_args.get("path")
+    if function_name in {"write_file", "patch"}:
+        file_path = function_args.get("path")
+        if (
+                not isinstance(file_path, str)
+                or not file_path.strip()
+        ):
+            return
+        resolved_path = resolve_workspace_path(
+            file_path,
+            tool_context,
+        )
+        working_dir = (
+            agent._checkpoint_mgr.get_working_dir_for_path(
+                str(resolved_path),
+                boundary=str(tool_context.workspace_root),
+            )
+        )
+        agent._checkpoint_mgr.ensure_checkpoint(
+            working_dir,
+            f"before {function_name}",
+        )
+        return
+
+    if function_name != "terminal":
+        return
+    command = function_args.get("command")
     if (
-            not isinstance(file_path, str)
-            or not file_path.strip()
+            not isinstance(command, str)
+            or not is_destructive_command(command)
     ):
         return
 
-    resolved_path = resolve_workspace_path(
-        file_path,
-        tool_context,
-    )
+    execution_cwd = Path.cwd().resolve()
+    raw_workdir = function_args.get("workdir")
+
+    if raw_workdir is None or raw_workdir == "":
+        command_cwd = execution_cwd
+    elif isinstance(raw_workdir, str):
+        command_cwd = Path(raw_workdir).expanduser()
+        if not command_cwd.is_absolute():
+            command_cwd = execution_cwd / command_cwd
+        command_cwd = command_cwd.resolve()
+    else:
+        return
+
+    workspace_root = tool_context.workspace_root.resolve()
+    try:
+        command_cwd.relative_to(workspace_root)
+    except ValueError:
+        return
 
     working_dir = (
         agent._checkpoint_mgr.get_working_dir_for_path(
-            str(resolved_path),
-            boundary=str(tool_context.workspace_root),
+            str(command_cwd),
+            boundary=str(workspace_root),
         )
     )
-
     agent._checkpoint_mgr.ensure_checkpoint(
         working_dir,
-        f"before {function_name}",
+        "before terminal",
     )
 
 
@@ -188,7 +223,7 @@ def execute_tool_calls_sequential(
                     # 其中只有 agent 不是由 model_tools 传入的。它来自外层 execute_tool_calls_sequential() 的参数，这种行为叫做闭包。
                     #  之所以这样设计，是因为 model_tools 不应该依赖或认识 AIAgent。它只定义通用 callback：
                     # ToolExecutor 再通过 lambda 把自己持有的 agent 补进去。这样避免了 model_tools -> AIAgent 的反向依赖。
-                    before_dispatch=(lambda name, args, context: _ensure_file_checkpoint(agent,name,args,context,)),
+                    before_dispatch=(lambda name, args, context: _ensure_checkpoint(agent, name, args, context, )),
                 )
 
         messages.append(

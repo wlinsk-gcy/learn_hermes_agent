@@ -356,7 +356,7 @@ write_file / patch
 
 terminal
   -> command 必须是 destructive
-  -> command_cwd = workdir or tool_context.cwd
+  -> command_cwd 与 terminal handler 一致：workdir or Path.cwd()
   -> command_cwd 必须位于 workspace_root
   -> get_working_dir_for_path(..., boundary=workspace_root)
   -> ensure_checkpoint(..., "before terminal")

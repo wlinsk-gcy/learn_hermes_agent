@@ -28,7 +28,7 @@
 - [x] Task 3：实现 LocalEnvironment 前台进程生命周期。
 - [x] Task 4：增加 terminal schema、handler 和 Registry 注册。
 - [x] Task 5：增加 destructive-command helper。
-- [ ] Task 6：接入 destructive terminal checkpoint。
+- [x] Task 6：接入 destructive terminal checkpoint。
 - [ ] Task 7：集中安全与回归验证。
 - [ ] Task 8：更新路线与交接文档。
 

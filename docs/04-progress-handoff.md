@@ -1946,6 +1946,12 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
   - 新增独立纯函数 `is_destructive_command()`，不执行命令，也不承担 approval 职责。
   - 识别常见文件变更命令、Git 工作区变更命令和覆盖重定向。
   - 覆盖重定向判断不会把 `>>`、`>&2` 或 `2>&1` 当成覆盖文件。
+- Task 6 destructive terminal checkpoint 已完成：
+  - 原文件工具 callback 扩展为统一 `_ensure_checkpoint()`，`write_file` / `patch` 行为保持不变。
+  - 仅在 terminal 命令被判定为 destructive 且实际 cwd 位于 `workspace_root` 内时创建 `before terminal` checkpoint。
+  - 默认和相对 `workdir` 以 `Path.cwd()` 为基准，与当前 terminal handler 的实际解析语义一致；`tool_context.workspace_root` 只承担 checkpoint 边界。
+  - approval preflight 仍先于 callback；`approval_required` 不调用 callback，也不执行 handler。
+  - checkpoint callback 异常仍由 `model_tools` 吞掉并记录，handler 继续执行，保持 fail-open。
 
 ### 修改文件
 
@@ -1956,6 +1962,7 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
 - `src/learn_hermes_agent/tools/terminal_tool.py`
 - `src/learn_hermes_agent/tools/registry.py`
 - `src/learn_hermes_agent/agent/tool_dispatch_helpers.py`
+- `src/learn_hermes_agent/agent/tool_executor.py`
 - `docs/04-progress-handoff.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`
@@ -1998,6 +2005,10 @@ terminal-background-block-ok
 terminal-approval-preflight-ok
 terminal-hardline-preflight-ok
 task-5-classification-ok
+task-6-checkpoint-boundary-ok
+task-6-approval-before-checkpoint-ok
+task-6-approved-order-ok
+task-6-checkpoint-fail-open-ok
 ```
 
 `uv run learn-hermes-agent tools` 已确认 Bash 可用时共暴露九个工具，且 terminal schema 中不存在 background/PTY 参数。`uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
@@ -2018,15 +2029,17 @@ $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
 - terminal 的 `check_fn` 只决定工具是否暴露，不负责 approval；approval 仍由 `model_tools` 在 handler 前统一执行。
 - 前台限定既要拒绝明确的后台语法，也要识别引号、转义和 `&&`、`&>`、`2>&1`、`|&`、`;&` 等非后台组合，避免明显误报。
 - destructive classifier 与 approval classifier 语义独立：前者只为 best-effort checkpoint 判断潜在文件变更，误报或漏报都不能改变命令授权结果。
+- destructive terminal checkpoint 必须使用与 handler 一致的 cwd 解析；当前最小前台 terminal 没有 session cwd，因此以进程 `Path.cwd()` 为默认基准。
+- workspace 外 terminal 可按 approval policy 执行，但不会触发学习项目的 workspace checkpoint。
 
 ### 尚未完成
 
-- destructive terminal checkpoint 接入。
-- 集中回归和 Batch 6 closeout。
+- 集中安全与回归验证。
+- Batch 6 closeout 文档更新。
 
 ### 下一步
 
-继续 Task 6：在现有 post-preflight `before_dispatch` callback 中，仅为 workspace 内的 destructive terminal 创建 best-effort checkpoint；仍不开始 background、PTY、process 或远程 backend。
+继续 Task 7：集中验证 approval、checkpoint、terminal runtime、旧工具回归和范围边界；仍不开始 background、PTY、process 或远程 backend。
 
 ## 后续进度模板
 
