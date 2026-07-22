@@ -1930,6 +1930,12 @@ Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Lo
   - 支持坏自定义候选回退、MSYS spawn 故障分类、Mandatory ASLR 查询和针对性诊断文本。
   - 新增线程安全的 40/60 有界输出 collector。
   - 新增常见 ANSI/CSI 清理和已知 secret 精确值替换 helper。
+- Task 3 LocalEnvironment 前台进程生命周期已完成：
+  - 子进程环境从父进程副本构建，移除指定 sensitive env、`VIRTUAL_ENV` 和 `CONDA_PREFIX`，不修改父进程环境。
+  - 使用 Bash 参数数组、`stdin=DEVNULL`、stdout/stderr 合流和后台 UTF-8 增量读取。
+  - Windows 使用新进程组和 `taskkill /T /F`，POSIX 使用新 session 和进程组信号。
+  - timeout 使用 monotonic deadline，返回码固定为 124，并验证孙进程不会在超时后继续写文件。
+  - 长 secret 使用 `[REDACTED]`，短 secret 使用等长 `*`，保证脱敏后结果仍受 `max_output_chars` 约束。
 
 ### 修改文件
 
@@ -1970,6 +1976,9 @@ find-bash-healthy-ok
 find-bash-missing-ok
 find-bash-fallback-ok
 task-2-ok
+execute-final-bound-ok
+task-3-output-secret-truncation-ok
+task-3-timeout-tree-ok
 ```
 
 `uv run python -m compileall -q src` 退出码为 0。当前机器的 Git Bash 位于 `D:\develop\Git\bin\bash.exe`，不在 PATH；验证通过子进程临时设置 `HERMES_GIT_BASH_PATH` 完成，没有修改系统环境。后续真实 CLI 验证前需在当前 PowerShell 设置：
@@ -1985,16 +1994,17 @@ $env:HERMES_GIT_BASH_PATH = 'D:\develop\Git\bin\bash.exe'
 - `find_bash()` 必须按健康状态选候选，文件存在不等于 MSYS 外部程序可运行。
 - Mandatory ASLR 只做查询和诊断，代码不得自动关闭系统安全策略。
 - 有界输出在读取过程中保留头 40% 和尾 60%，不能先无限收集再裁剪。
+- 输出脱敏不能扩大最终字符串；否则 collector 的严格上限会在后处理阶段失效。
+- timeout 必须清理进程树而不是只终止 Bash 父进程，退出码统一为 124。
 
 ### 尚未完成
 
-- Task 3 `LocalEnvironment.execute()`、环境变量清理、stdout/stderr 合流、timeout 和进程树清理。
 - terminal schema、handler、Registry 注册和 `check_fn`。
 - destructive terminal checkpoint、集中回归和 Batch 6 closeout。
 
 ### 下一步
 
-继续 Task 3：实现 LocalEnvironment 前台进程生命周期。先增加环境清理 helper，再逐步实现 Popen、后台 drain、timeout 和进程树清理；仍不开始 background、PTY、process 或远程 backend。
+继续 Task 4：增加 terminal schema、handler、环境可用性 `check_fn` 和 Registry 注册；仍不开始 destructive checkpoint 接入、background、PTY、process 或远程 backend。
 
 ## 后续进度模板
 

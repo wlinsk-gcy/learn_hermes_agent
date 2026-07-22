@@ -285,7 +285,7 @@ collector 记录总字符数，只保留头尾窗口。超限时渲染：
 
 其中前两类从规范化 config 动态派生。虚拟环境标记被移除，避免 agent 自己的 uv/venv 状态污染其他项目命令。
 
-记录被移除的非空 secret 值。terminal result 返回前，如输出包含这些值，将精确值替换为 `[REDACTED]`。这只是最小防护，不等价于 Hermes 完整 `redact_terminal_output()`。
+记录被移除的非空 secret 值。terminal result 返回前，如输出包含这些值，长值替换为 `[REDACTED]`，短于该 marker 的值替换为等长 `*`。替换不得扩大字符串，否则脱敏可能让最终结果重新突破 `max_output_chars`。这只是最小防护，不等价于 Hermes 完整 `redact_terminal_output()`。
 
 ## Approval 语义
 

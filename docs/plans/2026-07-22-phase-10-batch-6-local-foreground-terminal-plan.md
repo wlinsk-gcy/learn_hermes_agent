@@ -25,7 +25,7 @@
 
 - [x] Task 1：增加 terminal 配置。
 - [x] Task 2：建立 local environment 基础和有界输出。
-- [ ] Task 3：实现 LocalEnvironment 前台进程生命周期。
+- [x] Task 3：实现 LocalEnvironment 前台进程生命周期。
 - [ ] Task 4：增加 terminal schema、handler 和 Registry 注册。
 - [ ] Task 5：增加 destructive-command helper。
 - [ ] Task 6：接入 destructive terminal checkpoint。
@@ -567,9 +567,19 @@ def _redact_known_values(
     secret_values: tuple[str, ...],
 ) -> str:
     result = value
+    marker = "[REDACTED]"
+
     for secret in secret_values:
-        if secret:
-            result = result.replace(secret, "[REDACTED]")
+        if not secret:
+            continue
+
+        replacement = (
+            marker
+            if len(secret) >= len(marker)
+            else "*" * len(secret)
+        )
+        result = result.replace(secret, replacement)
+
     return result
 ~~~
 
@@ -664,16 +674,11 @@ class LocalEnvironment:
             max_output_chars
         )
 
-        creationflags = 0
+        creationflags = _windows_hide_flags()
         if _IS_WINDOWS:
             creationflags |= getattr(
                 subprocess,
                 "CREATE_NEW_PROCESS_GROUP",
-                0,
-            )
-            creationflags |= getattr(
-                subprocess,
-                "CREATE_NO_WINDOW",
                 0,
             )
 
@@ -910,7 +915,7 @@ print("task-3-ok")
 '@ | uv run python -
 ~~~
 
-预期：约三秒后输出 task-3-ok。若 delayed 文件出现，说明 timeout 只杀了 shell，不能进入下一 Task。
+预期：约三秒后输出 task-3-ok。若 delayed 文件出现，说明 timeout 只杀了 shell，不能进入下一 Task。另需用短 secret 验证脱敏后的最终输出仍不超过 `max_output_chars`。
 
 ### Task 4：增加 terminal schema、handler 和 Registry 注册
 

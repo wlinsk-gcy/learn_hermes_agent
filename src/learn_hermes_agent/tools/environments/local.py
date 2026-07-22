@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import re
 import logging
 import ntpath
@@ -483,11 +484,24 @@ def _redact_known_values(
         value: str,
         secret_values: tuple[str, ...],
 ) -> str:
-    """将已知 secret 的精确值替换为 [REDACTED]"""
+    """
+    将已知 secret 的精确值替换为 [REDACTED]
+    长 secret 仍显示 [REDACTED]；短 secret 使用等长 *，保证脱敏不会扩大输出
+    """
     result = value
+    marker = "[REDACTED]"
+
     for secret in secret_values:
-        if secret:
-            result = result.replace(secret, "[REDACTED]")
+        if not secret:
+            continue
+
+        replacement = (
+            marker
+            if len(secret) >= len(marker)
+            else "*" * len(secret)
+        )
+        result = result.replace(secret, replacement)
+
     return result
 
 
@@ -529,6 +543,111 @@ def _build_subprocess_env(
 class LocalEnvironment:
     def __init__(self, bash_path: str) -> None:
         self.bash_path = bash_path
+
+    def execute(
+            self,
+            command: str,
+            *,
+            cwd: Path,
+            timeout: int,
+            max_output_chars: int,
+            sensitive_env_names: set[str],
+    ) -> dict[str, object]:
+        env, secret_values = _build_subprocess_env(
+            sensitive_env_names
+        )
+        collector = _BoundedOutputCollector(max_output_chars)
+
+        creationflags = _windows_hide_flags()
+        if _IS_WINDOWS:
+            creationflags |= getattr(
+                subprocess,
+                "CREATE_NEW_PROCESS_GROUP",
+                0,
+            )
+
+        proc = subprocess.Popen(
+            [self.bash_path, "-c", command],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=str(cwd),
+            env=env,
+            start_new_session=not _IS_WINDOWS,
+            creationflags=creationflags,
+        )
+
+        reader = threading.Thread(
+            target=self._drain_output,
+            args=(proc, collector),
+            daemon=True,
+        )
+        reader.start()
+
+        deadline = time.monotonic() + timeout
+        timed_out = False
+
+        try:
+            poll_sleep = 0.01
+
+            while proc.poll() is None:
+                if time.monotonic() >= deadline:
+                    timed_out = True
+                    self._kill_process_tree(proc)
+                    break
+
+                time.sleep(poll_sleep)
+                poll_sleep = min(
+                    poll_sleep * 1.5,
+                    0.2,
+                )
+        except BaseException:
+            self._kill_process_tree(proc)
+            raise
+
+        if timed_out:
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Terminal process did not exit after tree kill: %s",
+                    proc.pid,
+                )
+
+        reader.join(timeout=2)
+
+        if reader.is_alive() and proc.stdout is not None:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+
+            reader.join(timeout=0.5)
+
+        suffix = ""
+        returncode = proc.returncode
+
+        if timed_out:
+            returncode = 124
+            suffix = (
+                f"\n[Command timed out after {timeout}s]"
+            )
+
+        output = collector.render(suffix=suffix)
+        output = _strip_ansi(output)
+        output = _redact_known_values(
+            output,
+            secret_values,
+        )
+
+        return {
+            "output": output,
+            "returncode": (
+                returncode
+                if isinstance(returncode, int)
+                else -1
+            ),
+        }
 
     # 后台输出读取
     @staticmethod
