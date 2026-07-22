@@ -191,7 +191,9 @@ terminal:
 查找顺序：
 
 - POSIX：PATH 中的 `bash`，然后 `/usr/bin/bash`、`/bin/bash`；最后可使用当前 `SHELL` 或 `/bin/sh` 兼容降级。
-- Windows：显式检查 Git for Windows 常见 `bash.exe` 路径，再检查 PATH；找不到时返回不可用。
+- Windows：按最新版 Hermes 的顺序检查 `HERMES_GIT_BASH_PATH`、`%LOCALAPPDATA%\hermes\git` 下的 PortableGit/MinGit、Git for Windows 常见目录和 PATH 中的 `bash`。
+- Windows 候选不能只检查文件存在；必须用外部 MSYS 程序执行探测选择第一个健康候选，并保留 Mandatory ASLR/MSYS spawn 故障诊断。
+- 本批只识别已有 portable Git，不复制 `install.ps1` 的下载和安装职责。
 
 `check_terminal_requirements()` 只判断 shell 是否可用，不执行审批，不创建进程，不承担权限边界。返回 False 或抛异常时，Registry 按既有 fail-closed 规则隐藏 terminal definition。
 

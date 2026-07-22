@@ -149,6 +149,7 @@ from __future__ import annotations
 
 import codecs
 import logging
+import ntpath
 import os
 import re
 import shutil
@@ -167,49 +168,269 @@ _ANSI_ESCAPE_RE = re.compile(
     r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
 )
 
+_BASH_EXTERNAL_PROGRAM_PROBE = (
+    "/usr/bin/true; /usr/bin/cat --version >/dev/null"
+)
+_bash_starts_cache: dict[str, bool] = {}
+_bash_probe_details_cache: dict[str, str] = {}
+_mandatory_aslr_enabled_cache: bool | None = None
 
-def find_bash() -> str | None:
+
+def _windows_hide_flags() -> int:
     if not _IS_WINDOWS:
-        candidates = [
-            shutil.which("bash"),
-            "/usr/bin/bash",
-            "/bin/bash",
-            os.environ.get("SHELL"),
-            "/bin/sh",
-        ]
-        for candidate in candidates:
-            if candidate and Path(candidate).is_file():
-                return str(Path(candidate))
-        return None
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-    program_files = os.environ.get(
-        "ProgramFiles",
-        r"C:\Program Files",
+
+def _looks_like_msys_spawn_failure(details: str) -> bool:
+    lowered = details.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "dofork:",
+            "child_copy:",
+            "0xc0000142",
+            "0xc0000005",
+        )
     )
-    program_files_x86 = os.environ.get(
-        "ProgramFiles(x86)",
-        r"C:\Program Files (x86)",
+
+
+def _mandatory_aslr_enabled() -> bool | None:
+    global _mandatory_aslr_enabled_cache
+
+    if _mandatory_aslr_enabled_cache is not None:
+        return _mandatory_aslr_enabled_cache
+
+    try:
+        powershell = (
+            shutil.which("powershell.exe")
+            or "powershell.exe"
+        )
+        result = subprocess.run(
+            [
+                powershell,
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                (
+                    "(Get-ProcessMitigation -System).Aslr."
+                    "ForceRelocateImages.ToString()"
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=_windows_hide_flags(),
+        )
+        if result.returncode != 0:
+            return None
+
+        value = (result.stdout or "").strip().upper()
+        if value == "ON":
+            _mandatory_aslr_enabled_cache = True
+            return True
+        if value in {"OFF", "NOTSET"}:
+            _mandatory_aslr_enabled_cache = False
+            return False
+    except Exception as exc:
+        logger.debug(
+            "Could not query Windows Mandatory ASLR state: %s",
+            exc,
+        )
+    return None
+
+
+def _git_root_from_bash(bash: str) -> str:
+    bin_dir = ntpath.dirname(ntpath.normpath(bash))
+    if ntpath.basename(bin_dir).lower() != "bin":
+        return ntpath.dirname(bin_dir)
+
+    parent = ntpath.dirname(bin_dir)
+    if ntpath.basename(parent).lower() == "usr":
+        return ntpath.dirname(parent)
+    return parent
+
+
+def _git_bash_aslr_help(
+    bash: str,
+    details: str = "",
+) -> str:
+    git_root = _git_root_from_bash(bash)
+    escaped_root = git_root.replace("'", "''")
+    detail_line = (
+        f"\nGit Bash probe output: {details[:500]}"
+        if details
+        else ""
     )
+    return (
+        f"Git Bash at {bash} cannot launch required MSYS child "
+        "processes while Windows Mandatory ASLR "
+        "(ForceRelocateImages) is enabled, or its output matches "
+        f"that Git-for-Windows failure class.{detail_line}\n"
+        "Reinstalling Git will not change the Windows mitigation "
+        "policy. Open PowerShell as Administrator and run:\n"
+        f"$gitRoot = '{escaped_root}'\n"
+        'Get-Item "$gitRoot\\bin\\bash.exe", '
+        '"$gitRoot\\usr\\bin\\*.exe" '
+        "-ErrorAction SilentlyContinue | ForEach-Object { "
+        "Set-ProcessMitigation -Name $_.FullName "
+        "-Disable ForceRelocateImages }\n"
+        "Then restart Hermes. If the override is blocked or later "
+        "re-applied, ask your Windows administrator to allow this "
+        "per-program exception."
+    )
+
+
+def _bash_starts(bash: str) -> bool:
+    cached = _bash_starts_cache.get(bash)
+    if cached is not None:
+        return cached
+
+    try:
+        result = subprocess.run(
+            [
+                bash,
+                "--noprofile",
+                "--norc",
+                "-c",
+                _BASH_EXTERNAL_PROGRAM_PROBE,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            creationflags=_windows_hide_flags(),
+        )
+        ok = result.returncode == 0
+        if not ok:
+            combined = (
+                f"{result.stdout or ''}{result.stderr or ''}"
+            )
+            _bash_probe_details_cache[bash] = (
+                combined.strip()[:2000]
+            )
+            logger.debug(
+                "bash probe failed for %s: %s",
+                bash,
+                combined.strip()[:200],
+            )
+    except Exception as exc:
+        _bash_probe_details_cache[bash] = str(exc)[:2000]
+        logger.debug("bash probe error for %s: %s", bash, exc)
+        ok = False
+
+    _bash_starts_cache[bash] = ok
+    return ok
+
+
+def find_bash() -> str:
+    if not _IS_WINDOWS:
+        return (
+            shutil.which("bash")
+            or (
+                "/usr/bin/bash"
+                if Path("/usr/bin/bash").is_file()
+                else None
+            )
+            or (
+                "/bin/bash"
+                if Path("/bin/bash").is_file()
+                else None
+            )
+            or os.environ.get("SHELL")
+            or "/bin/sh"
+        )
+
+    candidates: list[str] = []
+
+    custom = os.environ.get("HERMES_GIT_BASH_PATH")
+    if custom and Path(custom).is_file():
+        candidates.append(custom)
+
     local_app_data = os.environ.get("LOCALAPPDATA", "")
-
-    candidates = [
-        Path(program_files) / "Git" / "bin" / "bash.exe",
-        Path(program_files_x86) / "Git" / "bin" / "bash.exe",
-    ]
     if local_app_data:
-        candidates.append(
+        portable_root = Path(local_app_data) / "hermes" / "git"
+        for candidate_path in (
+            portable_root / "bin" / "bash.exe",
+            portable_root / "usr" / "bin" / "bash.exe",
+        ):
+            candidate = str(candidate_path)
+            if candidate_path.is_file() and candidate not in candidates:
+                candidates.append(candidate)
+
+    for candidate_path in (
+        Path(
+            os.environ.get("ProgramFiles", r"C:\Program Files")
+        )
+        / "Git"
+        / "bin"
+        / "bash.exe",
+        Path(
+            os.environ.get(
+                "ProgramFiles(x86)",
+                r"C:\Program Files (x86)",
+            )
+        )
+        / "Git"
+        / "bin"
+        / "bash.exe",
+        (
             Path(local_app_data)
             / "Programs"
             / "Git"
             / "bin"
             / "bash.exe"
-        )
+            if local_app_data
+            else None
+        ),
+    ):
+        if candidate_path is None:
+            continue
+        candidate = str(candidate_path)
+        if candidate_path.is_file() and candidate not in candidates:
+            candidates.append(candidate)
+
+    found = shutil.which("bash")
+    if found and found not in candidates:
+        candidates.append(found)
 
     for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
+        if _bash_starts(candidate):
+            if (
+                candidate != custom
+                and custom
+                and Path(custom).is_file()
+            ):
+                logger.warning(
+                    "HERMES_GIT_BASH_PATH=%s fails to start; using %s "
+                    "instead",
+                    custom,
+                    candidate,
+                )
+            return candidate
 
-    return shutil.which("bash.exe")
+    if candidates:
+        probe_details = "\n".join(
+            detail
+            for candidate in candidates
+            if (
+                detail := _bash_probe_details_cache.get(candidate)
+            )
+        )
+        if (
+            _mandatory_aslr_enabled() is True
+            or _looks_like_msys_spawn_failure(probe_details)
+        ):
+            raise RuntimeError(
+                _git_bash_aslr_help(candidates[0], probe_details)
+            )
+        return candidates[0]
+
+    raise RuntimeError(
+        "Git Bash not found. Hermes Agent requires Git for Windows "
+        "on Windows.\n"
+        "Install it from: https://git-scm.com/download/win\n"
+        "Or set HERMES_GIT_BASH_PATH to your bash.exe location."
+    )
 
 
 class _BoundedOutputCollector:
