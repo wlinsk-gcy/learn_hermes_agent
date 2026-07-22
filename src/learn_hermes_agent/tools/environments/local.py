@@ -214,21 +214,25 @@ def _mandatory_aslr_enabled() -> bool | None:
     return None
 
 
-def find_bash() -> str | None:
+def find_bash() -> str:
     """在 Windows 优先寻找 Git Bash 的标准安装位置；其他系统优先寻找 Bash，并保留 /bin/sh 作为最后降级"""
     if not _IS_WINDOWS:
         # POSIX分支
-        candidates = [
-            shutil.which("bash"),
-            "/usr/bin/bash",
-            "/bin/bash",
-            os.environ.get("SHELL"),
-            "/bin/sh",
-        ]
-        for candidate in candidates:
-            if candidate and Path(candidate).is_file():
-                return str(Path(candidate))
-        return None
+        return (
+                shutil.which("bash")
+                or (
+                    "/usr/bin/bash"
+                    if Path("/usr/bin/bash").is_file()
+                    else None
+                )
+                or (
+                    "/bin/bash"
+                    if Path("/bin/bash").is_file()
+                    else None
+                )
+                or os.environ.get("SHELL")
+                or "/bin/sh"
+        )
 
     candidates: list[Path] = []
 
@@ -282,7 +286,55 @@ def find_bash() -> str | None:
         if candidate.is_file() and candidate not in candidates:
             candidates.append(candidate)
 
-    for candidate in candidates:
-        return str(candidate)
+    found = shutil.which("bash")
+    if found:
+        found_path = Path(found)
+        if found_path not in candidates:
+            candidates.append(found_path)
 
-    return shutil.which("bash")
+    for candidate_path in candidates:
+        candidate = str(candidate_path)
+        if _bash_starts(candidate):
+            if (
+                    candidate != custom
+                    and custom
+                    and Path(custom).is_file()
+            ):
+                logger.warning(
+                    "HERMES_GIT_BASH_PATH=%s fails to start; "
+                    "using %s instead",
+                    custom,
+                    candidate,
+                )
+            return candidate
+
+    if candidates:
+        probe_details = "\n".join(
+            detail
+            for candidate_path in candidates
+            if (
+                detail := _bash_probe_details_cache.get(
+                    str(candidate_path)
+                )
+            )
+        )
+
+        if (
+                _mandatory_aslr_enabled() is True
+                or _looks_like_msys_spawn_failure(probe_details)
+        ):
+            raise RuntimeError(
+                _git_bash_aslr_help(
+                    str(candidates[0]),
+                    probe_details,
+                )
+            )
+        # 如果所有候选都启动失败但不像 ASLR 故障，Hermes 仍返回第一个候选，让真正执行命令时暴露原始 Bash 错误
+        return str(candidates[0])
+
+    raise RuntimeError(
+        "Git Bash not found. Hermes Agent requires Git for Windows "
+        "on Windows.\n"
+        "Install it from: https://git-scm.com/download/win\n"
+        "Or set HERMES_GIT_BASH_PATH to your bash.exe location."
+    )
