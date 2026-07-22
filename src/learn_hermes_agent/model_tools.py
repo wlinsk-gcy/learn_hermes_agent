@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 BeforeDispatch = Callable[
     [
-        str, # 工具名称
-        dict[str, Any], # 已解析的参数字典
-        ToolExecutionContext | None, # 工具执行上下文
+        str,  # 工具名称
+        dict[str, Any],  # 已解析的参数字典
+        ToolExecutionContext | None,  # 工具执行上下文
     ],
     None,
 ]
@@ -31,10 +31,14 @@ def get_tool_definitions(
     return target.get_definitions(tool_names)
 
 
-def handle_function_call(name: str, arguments_json: str | dict[str, Any] | None = None, *,
-                         registry: ToolRegistry | None = None,
-                         context: ToolExecutionContext | None = None,
-                         ) -> str:
+def handle_function_call(
+        name: str,
+        arguments_json: str | dict[str, Any] | None = None,
+        *,
+        registry: ToolRegistry | None = None,
+        context: ToolExecutionContext | None = None,
+        before_dispatch: BeforeDispatch | None = None,
+) -> str:
     target = registry or get_default_registry()
     entry = target.get(name)
     arguments = _parse_arguments(arguments_json)
@@ -43,15 +47,38 @@ def handle_function_call(name: str, arguments_json: str | dict[str, Any] | None 
     if preflight_error is not None:
         return json.dumps(preflight_error, ensure_ascii=False)
 
+    if before_dispatch is not None:
+        try:
+            before_dispatch(name, arguments, context)
+        except Exception as exc:
+            logger.debug(
+                (
+                    "before-dispatch callback failed "
+                    "(non-fatal): %s"
+                ),
+                exc,
+                exc_info=True)
+
     result = entry.handler(arguments)
     return json.dumps(result, ensure_ascii=False)
 
 
-def safe_handle_function_call(name: str, arguments_json: str | dict[str, Any] | None = None, *,
-                              registry: ToolRegistry | None = None,
-                              context: ToolExecutionContext | None = None, ) -> str:
+def safe_handle_function_call(
+        name: str,
+        arguments_json: str | dict[str, Any] | None = None,
+        *,
+        registry: ToolRegistry | None = None,
+        context: ToolExecutionContext | None = None,
+        before_dispatch: BeforeDispatch | None = None,
+) -> str:
     try:
-        return handle_function_call(name, arguments_json, registry=registry, context=context)
+        return handle_function_call(
+            name,
+            arguments_json,
+            registry=registry,
+            context=context,
+            before_dispatch=before_dispatch,
+        )
     except Exception as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
