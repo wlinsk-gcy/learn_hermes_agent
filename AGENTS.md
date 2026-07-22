@@ -43,7 +43,7 @@
 
 ## 当前状态
 
-截至 2026-07-21：
+截至 2026-07-22：
 
 - 已重新分析最新版 Hermes 源码及 Registry / ToolExecutor 承重链路。
 - 已建立中文路线图和 session 交接文档。
@@ -51,6 +51,9 @@
 - Phase 9 Provider Runtime 已完成最小版本。
 - Phase 10 Batch 1 Safety / Approval Primitives 已完成。
 - Phase 10 Batch 2A 至 2E File Tools With Safety 已完成：`read_file`、`write_file`、`patch`、`search_files`。
-- `terminal`、checkpoint 和独立 ToolExecutor 尚未实现。
+- Phase 10 Batch 3 ToolRegistry v2 已完成：`toolset`、`check_fn`、`generation` 和可用定义过滤已接入。
+- Phase 10 Batch 4 Minimal ToolExecutor 已完成：已建立 Provider definitions 范围快照和模块级顺序执行器。
+- Phase 10 Batch 5 Minimal Checkpoint 的 Task 1 至 Task 5 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期已经实现。
+- `terminal`、checkpoint CLI、自动 checkpoint 的写工具 dispatch 接入、并发或 segmented ToolExecutor 尚未完成。
 
-下一步应执行 Phase 10 Batch 3：ToolRegistry v2。先实现带兼容默认值的 `toolset`、`check_fn` 和 `generation`，不开始 ToolExecutor、checkpoint 或 terminal。
+下一步应继续执行 `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-plan.md` 的 Task 6：在安全 preflight 通过后、`write_file` / `patch` 真正 dispatch 前创建 best-effort checkpoint；不开始 terminal。

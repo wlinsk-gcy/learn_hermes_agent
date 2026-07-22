@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-07-21
+2026-07-22
 
 ## 当前状态
 
@@ -94,12 +94,13 @@
 - Phase 10 Batch 2A 至 2E：已完成 `read_file`、`write_file`、文件工具加固、精确替换版 `patch` 和最小 `search_files`。
 - Phase 10 Batch 3：已完成 ToolRegistry v2，包括 toolset、check_fn、generation、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：已完成 Minimal ToolExecutor，包括 Provider definitions 范围快照、模型参数解析、顺序执行和 tool result 追加。
+- Phase 10 Batch 5 Task 1 至 Task 5：已完成 checkpoint 配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现 checkpoint、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未完成自动 checkpoint 的写工具 dispatch 接入、checkpoint CLI、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -1848,6 +1849,53 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 ### 下一步
 
 进入 Phase 10 Batch 5：Minimal Checkpoint。开始设计前先重新对齐最新版 Hermes 的 checkpoint 创建时机、保存范围和失败语义；本批仍不实现 terminal。
+
+## 2026-07-22 Phase 10 Batch 5 Minimal Checkpoint 进度更新
+
+### 本次目标
+
+复刻最新版 Hermes 的透明文件系统 checkpoint 核心意图：使用共享 shadow Git store，在允许的文件写操作真正执行前保存 workspace 状态，并保持 checkpoint fail-open、安全策略 fail-closed。
+
+### 已完成
+
+- Task 1：新增默认关闭的 `checkpoints.enabled`、`max_snapshots`、checkpoint base 路径和 doctor 可观察输出。
+- Task 2：新增 `tools/checkpoint_manager.py` 基础层：
+  - 共享 bare shadow Git store。
+  - 每 workspace 独立 ref 和 index。
+  - Git 环境与用户全局/系统配置隔离。
+  - 默认排除 `.git/`、`.learn_hermes/`、虚拟环境、缓存、构建产物、`.env*` 和日志。
+- Task 3：实现 `CheckpointManager`：
+  - 每 Provider/tool iteration、每 workspace 最多尝试一次快照。
+  - 内容无变化时不创建重复 commit。
+  - 列举 checkpoint。
+  - 重写保留链并执行 GC，实现真实 `max_snapshots` 数量限制。
+- Task 4：实现路径解析和 Manager 级恢复：
+  - 项目根 marker 搜索受 `workspace_root` boundary 限制。
+  - restore 文件路径拒绝空值、绝对路径和目录穿越。
+  - commit 必须属于当前 workspace ref。
+  - 恢复前创建 `pre-rollback` 快照。
+- Task 5：`AIAgent` 持有 `CheckpointManager`，CLI 传入 checkpoint 配置，并在每个 Provider/tool iteration 开始时调用 `new_turn()`。
+
+### 已验证
+
+- `compileall` 持续通过。
+- 共享 store 不会在目标 workspace 创建或修改 `.git`。
+- 首次快照、无变化去重、parent commit 链、列举和数量裁剪均通过临时目录不变量。
+- 单文件恢复、pre-rollback 快照、非法 hash、路径穿越和跨 workspace commit 拒绝均通过。
+- CLI `build_agent()` 的配置传递和两轮 tool-demo iteration 生命周期通过。
+
+### 设计结论
+
+- checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具，也不暴露给 LLM。
+- 本学习版与最新版 Hermes 一样使用单一共享 object store；每 workspace 的 ref/index 提供逻辑隔离和对象去重。
+- `new_turn()` 的实际生命周期是一次 Provider/tool iteration，不是整个用户输入。
+- checkpoint 失败必须 fail-open；安全 preflight 仍然 fail-closed。
+- 本批 restore 只验收 checkpoint 中已存在的文本文件；不使用 `git clean`，不定义 checkpoint 后新增文件的删除语义。
+- 当前不实现 terminal、checkpoint CLI、diff、全局容量限制、自动维护、legacy migration 或并发 executor。
+
+### 下一步
+
+继续执行 Batch 5 Task 6：给 `model_tools` 增加可选 `before_dispatch` callback，在安全 preflight 通过后、handler 调用前触发；顺序 ToolExecutor 只为 `write_file` / `patch` 绑定 checkpoint helper。随后执行 Task 7 集中回归和 Task 8 最终文档收尾。
 
 ## 后续进度模板
 

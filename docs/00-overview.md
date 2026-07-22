@@ -68,7 +68,7 @@ CLI / Gateway / ACP / TUI
 
 ## 当前实现进度
 
-截至 2026-07-21，学习项目已经完成：
+截至 2026-07-22，学习项目已经完成：
 
 - Phase 0 至 Phase 8 的最小可运行版本。
 - Phase 9：最小 Provider Runtime、OpenAI-compatible provider、规范化 response 和 fallback chain。
@@ -76,8 +76,9 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 2A 至 2E：`read_file`、`write_file`、文件工具加固、`patch` 和 `search_files`。
 - Phase 10 Batch 3：ToolRegistry v2，增加 `toolset`、`check_fn`、registry `generation`、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：Minimal ToolExecutor，增加来自实际 Provider definitions 的 `valid_tool_names`，并由模块级顺序执行器负责模型工具范围检查、参数解析和 tool result 追加。
+- Phase 10 Batch 5 Task 1 至 Task 5：checkpoint 配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期。
 
-下一阶段是 Phase 10 Batch 5：Minimal Checkpoint。Batch 4 完成后，工具执行链已经形成以下演进顺序：
+当前正在执行 Phase 10 Batch 5 Task 6：在安全 preflight 通过后、写工具真正 dispatch 前接入自动 checkpoint。工具执行链的演进顺序是：
 
 ```text
 Minimal ToolExecutor
@@ -85,7 +86,7 @@ Minimal ToolExecutor
   -> Local Foreground Terminal
 ```
 
-`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。当前尚未实现 terminal、checkpoint、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。当前 checkpoint 核心存储与 Manager API 已实现，但自动写前接入尚未完成；terminal、checkpoint CLI、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
 ## 文档地图
 
@@ -100,3 +101,5 @@ Minimal ToolExecutor
 - `docs/plans/2026-07-21-phase-10-batch-3-tool-registry-v2-plan.md`：Batch 3 实施计划。
 - `docs/plans/2026-07-21-phase-10-batch-4-minimal-tool-executor-design.md`：Batch 4 Minimal ToolExecutor 设计。
 - `docs/plans/2026-07-21-phase-10-batch-4-minimal-tool-executor-plan.md`：Batch 4 实施计划。
+- `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-design.md`：Batch 5 Minimal Checkpoint 设计。
+- `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-plan.md`：Batch 5 实施计划。
