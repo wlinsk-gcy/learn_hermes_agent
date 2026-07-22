@@ -225,6 +225,10 @@ def run_doctor() -> int:
     print(f"compression_protect_first_n: {compression['protect_first_n']}")
     print(f"compression_protect_last_n: {compression['protect_last_n']}")
 
+    terminal = config["terminal"]
+    print(f"terminal_timeout_seconds: {terminal['timeout_seconds']}")
+    print(f"terminal_max_output_chars: {terminal['max_output_chars']}")
+
     checkpoints = config["checkpoints"]
     print(f"checkpoints_enabled: {checkpoints['enabled']}")
     print(f"checkpoint_max_snapshots: {checkpoints['max_snapshots']}")
