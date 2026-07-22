@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from learn_hermes_agent.agent.messages import ChatMessage, tool_message
 from learn_hermes_agent.agent.tool_context import ToolExecutionContext
 from learn_hermes_agent.model_tools import safe_handle_function_call
 from learn_hermes_agent.agent.file_safety import resolve_workspace_path
+from learn_hermes_agent.agent.tool_dispatch_helpers import is_destructive_command
 
 if TYPE_CHECKING:
     # TYPE_CHECKING 使 AIAgent 只在类型检查时导入，避免后续形成循环导入。

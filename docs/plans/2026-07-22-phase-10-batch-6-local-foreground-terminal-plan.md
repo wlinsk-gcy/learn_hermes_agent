@@ -27,7 +27,7 @@
 - [x] Task 2：建立 local environment 基础和有界输出。
 - [x] Task 3：实现 LocalEnvironment 前台进程生命周期。
 - [x] Task 4：增加 terminal schema、handler 和 Registry 注册。
-- [ ] Task 5：增加 destructive-command helper。
+- [x] Task 5：增加 destructive-command helper。
 - [ ] Task 6：接入 destructive terminal checkpoint。
 - [ ] Task 7：集中安全与回归验证。
 - [ ] Task 8：更新路线与交接文档。
@@ -1448,14 +1448,15 @@ def _ensure_checkpoint(
     ):
         return
 
+    execution_cwd = Path.cwd().resolve()
     raw_workdir = function_args.get("workdir")
     if raw_workdir is None or raw_workdir == "":
-        command_cwd = tool_context.cwd
+        command_cwd = execution_cwd
     elif isinstance(raw_workdir, str):
         command_cwd = Path(raw_workdir).expanduser()
         if not command_cwd.is_absolute():
             command_cwd = (
-                tool_context.cwd / command_cwd
+                execution_cwd / command_cwd
             )
         command_cwd = command_cwd.resolve()
     else:
