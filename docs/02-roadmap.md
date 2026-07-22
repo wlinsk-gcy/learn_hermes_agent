@@ -14,7 +14,7 @@
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4 已完成。
-- Phase 10 Batch 5 的 Task 1 至 Task 5 已完成；下一步是 Task 6 自动写前 checkpoint 接入。
+- Phase 10 Batch 5 Minimal Checkpoint 已完成；下一步是 Batch 6 Local Foreground Terminal 的源码对齐和独立设计。
 
 ## Phase 0：项目基础与约定
 
@@ -271,7 +271,7 @@
 
 ## Phase 10：安全、审批和执行环境
 
-状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety、Batch 3 ToolRegistry v2 与 Batch 4 Minimal ToolExecutor 已完成；Batch 5 Minimal Checkpoint 的 Task 1 至 Task 5 已完成，Task 6 正在进行。
+状态：Batch 1 Safety / Approval Primitives、Batch 2 File Tools With Safety、Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor 与 Batch 5 Minimal Checkpoint 已完成；下一步是 Batch 6 Local Foreground Terminal 的源码对齐和设计。
 
 目标：复刻 Hermes 工具安全边界。
 
@@ -294,25 +294,26 @@
   - 新增模块级 `execute_tool_calls_sequential()`，负责模型工具范围检查、参数解析、顺序执行和 tool result 追加。
   - 被 `check_fn` 隐藏的已注册工具不能再被模型通过 tool call 执行。
   - `model_tools` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容。
-- Batch 5 Task 1 至 Task 5：Minimal Checkpoint 基础与 Manager API：
+- Batch 5：Minimal Checkpoint：
   - 新增默认关闭的 checkpoint 配置和独立存储路径。
   - 使用单一共享 shadow Git object store，并以每 workspace 独立 ref/index 隔离状态。
   - 实现快照、每 iteration 去重、列举、真实数量裁剪和 GC 后目录修复。
   - 实现受 workspace 边界限制的项目根发现、commit 归属校验和 Manager 级恢复。
   - `AIAgent` 持有 `CheckpointManager`，并在每个 Provider/tool iteration 开始时重置去重状态。
+  - `model_tools` 在安全 preflight 通过后、handler 前调用可选 `before_dispatch` callback。
+  - 顺序 ToolExecutor 只为 `write_file` / `patch` 创建 checkpoint；checkpoint 异常 fail-open。
+  - 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
 
 后续顺序：
 
-1. Batch 5 Task 6：在安全 preflight 后、`write_file` / `patch` dispatch 前创建 best-effort checkpoint。
-2. Batch 5 Task 7：集中回归验证。
-3. Batch 5 Task 8：更新进度与交接文档。
-4. Batch 6：local foreground terminal。
+1. Batch 6：先重新对齐最新版 Hermes terminal、approval 和 execution backend。
+2. 完成 Local Foreground Terminal 独立设计与实施计划。
+3. 设计确认后再分步实现，不直接扩展到远程或后台执行环境。
 
 暂未实现：
 
 - terminal tool 和任何命令执行 backend。
 - checkpoint CLI、rollback UX、diff、全局容量限制、自动维护和 legacy migration。
-- 写工具的自动 checkpoint dispatch 接入尚未完成。
 - 并发工具执行、middleware、guardrails。
 - Hermes 完整 registry 动态能力和完整 search/patch 高级模式。
 

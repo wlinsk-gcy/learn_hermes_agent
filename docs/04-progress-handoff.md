@@ -94,13 +94,13 @@
 - Phase 10 Batch 2A 至 2E：已完成 `read_file`、`write_file`、文件工具加固、精确替换版 `patch` 和最小 `search_files`。
 - Phase 10 Batch 3：已完成 ToolRegistry v2，包括 toolset、check_fn、generation、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：已完成 Minimal ToolExecutor，包括 Provider definitions 范围快照、模型参数解析、顺序执行和 tool result 追加。
-- Phase 10 Batch 5 Task 1 至 Task 5：已完成 checkpoint 配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期。
+- Phase 10 Batch 5：已完成 Minimal Checkpoint，包括配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的自动写前 checkpoint。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未完成自动 checkpoint 的写工具 dispatch 接入、checkpoint CLI、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现 checkpoint CLI、rollback UX、terminal、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -1875,6 +1875,13 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
   - commit 必须属于当前 workspace ref。
   - 恢复前创建 `pre-rollback` 快照。
 - Task 5：`AIAgent` 持有 `CheckpointManager`，CLI 传入 checkpoint 配置，并在每个 Provider/tool iteration 开始时调用 `new_turn()`。
+- Task 6：完成自动写前 checkpoint：
+  - `model_tools` 增加可选 `before_dispatch` callback。
+  - callback 仅在安全 preflight 通过后、handler 前执行。
+  - 顺序 ToolExecutor 只为 `write_file` / `patch` 解析正确 workspace 并创建 checkpoint。
+  - callback 或 checkpoint 异常采用 fail-open，不阻止工具 handler。
+- Task 7：完成集中回归验证。
+- 源码对齐基线：Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`，checkpoint path fix `d7b36070e`。
 
 ### 已验证
 
@@ -1883,6 +1890,9 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 - 首次快照、无变化去重、parent commit 链、列举和数量裁剪均通过临时目录不变量。
 - 单文件恢复、pre-rollback 快照、非法 hash、路径穿越和跨 workspace commit 拒绝均通过。
 - CLI `build_agent()` 的配置传递和两轮 tool-demo iteration 生命周期通过。
+- 八个内置工具 schema、`echo`、完整 tool-demo 消息链和 `.env` fail-closed preflight 回归通过。
+- 自动写入验收确认被阻止的写调用不触发 callback，允许调用在 handler 前保存旧内容，checkpoint 故障时 handler 仍执行。
+- `git diff --check` 通过；工作树只显示既有无关的 `sandbox/`。
 
 ### 设计结论
 
@@ -1895,7 +1905,7 @@ uv run learn-hermes-agent chat --tool-demo --show-messages "please use a tool"
 
 ### 下一步
 
-继续执行 Batch 5 Task 6：给 `model_tools` 增加可选 `before_dispatch` callback，在安全 preflight 通过后、handler 调用前触发；顺序 ToolExecutor 只为 `write_file` / `patch` 绑定 checkpoint helper。随后执行 Task 7 集中回归和 Task 8 最终文档收尾。
+Phase 10 Batch 5 Minimal Checkpoint 已完成。下一步是 Phase 10 Batch 6 Local Foreground Terminal；开始前必须重新分析最新版 Hermes 的 terminal tool、approval ordering、local execution backend、timeout、cwd/workspace 和结果语义，并先形成独立设计与实施计划，不直接写代码。
 
 ## 后续进度模板
 

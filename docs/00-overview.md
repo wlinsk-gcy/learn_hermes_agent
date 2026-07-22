@@ -76,9 +76,9 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 2A 至 2E：`read_file`、`write_file`、文件工具加固、`patch` 和 `search_files`。
 - Phase 10 Batch 3：ToolRegistry v2，增加 `toolset`、`check_fn`、registry `generation`、可用定义过滤和 toolset 查询。
 - Phase 10 Batch 4：Minimal ToolExecutor，增加来自实际 Provider definitions 的 `valid_tool_names`，并由模块级顺序执行器负责模型工具范围检查、参数解析和 tool result 追加。
-- Phase 10 Batch 5 Task 1 至 Task 5：checkpoint 配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期。
+- Phase 10 Batch 5：Minimal Checkpoint，包括默认关闭的配置、共享 shadow Git store、per-workspace ref/index、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的 `write_file` / `patch` 自动写前 checkpoint。
 
-当前正在执行 Phase 10 Batch 5 Task 6：在安全 preflight 通过后、写工具真正 dispatch 前接入自动 checkpoint。工具执行链的演进顺序是：
+下一阶段是 Phase 10 Batch 6：Local Foreground Terminal。当前工具执行链的演进顺序是：
 
 ```text
 Minimal ToolExecutor
@@ -86,7 +86,9 @@ Minimal ToolExecutor
   -> Local Foreground Terminal
 ```
 
-`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。当前 checkpoint 核心存储与 Manager API 已实现，但自动写前接入尚未完成；terminal、checkpoint CLI、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。terminal、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
+
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
 
 ## 文档地图
 

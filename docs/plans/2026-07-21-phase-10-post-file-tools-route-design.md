@@ -12,7 +12,8 @@
 - Batch 2C 已完成文件展示文本回写防护。
 - Batch 2D 已完成精确字符串替换版 `patch`。
 - Batch 2E 已完成最小 `search_files`，包括正则搜索、结果限制、统一读路径 preflight 和候选文件级安全过滤。
-- 尚未实现 terminal、checkpoint、并发工具执行、middleware 或 guardrails。
+- Batch 3 ToolRegistry v2、Batch 4 Minimal ToolExecutor 和 Batch 5 Minimal Checkpoint 已按本路线完成。
+- 尚未实现 terminal、checkpoint CLI、rollback UX、并发工具执行、middleware 或 guardrails。
 
 ## 最新 Hermes 对齐结论
 
@@ -21,17 +22,18 @@
 - `tools/registry.py` 负责工具元数据、toolset、可用性检查和 registry generation。
 - `agent/tool_executor.py` 负责参数解析、阻断判断、guardrail、checkpoint preflight 和实际执行。
 
-当前学习项目仍然是：
+当前学习项目已经演进为：
 
 ```text
-model_tools.py
-  -> 参数解析
-  -> 安全 preflight
-  -> registry lookup
-  -> handler execution
+CLI
+  -> AIAgent
+  -> agent/tool_executor.py
+  -> model_tools.py
+  -> tools/registry.py
+  -> tools/*.py
 ```
 
-如果现在直接加入 terminal 或 checkpoint，`model_tools.py` 会继续承担越来越多运行态职责，不利于后续复刻 Hermes 的 executor 设计。
+原设计担心的职责堆叠已经通过 Batch 3/4 解决；Batch 5 在不把 `AIAgent` 反向引入 `model_tools.py` 的前提下，通过可选 `before_dispatch` callback 接入 checkpoint。
 
 ## Decision Brief
 
@@ -64,6 +66,8 @@ model_tools.py
 3. Batch 4：最小 ToolExecutor。
 4. Batch 5：最小 checkpoint。
 5. Batch 6：local foreground terminal。
+
+截至 2026-07-22，顺序中的 Batch 2E 至 Batch 5 均已完成。Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；下一步是 Batch 6 的最新源码对齐与独立设计。
 
 ## Batch 3 边界
 
@@ -98,15 +102,25 @@ model_tools.py
 - guardrail loop detection。
 - checkpoint。
 
+## Batch 5 执行结果
+
+- checkpoint 由 `AIAgent` 透明持有，不作为 Registry entry 暴露给 LLM。
+- 使用共享 shadow Git object store、per-workspace ref/index 和独立 index 文件。
+- 每个 Provider/tool iteration 重置 workspace 去重状态。
+- `write_file` / `patch` 在安全 preflight 通过后、handler 前创建 checkpoint。
+- checkpoint fail-open，安全 preflight fail-closed。
+- 默认关闭；未实现 checkpoint CLI、rollback UX、terminal 或并发 executor。
+
 ## 风险与回滚
 
 - Registry v2 使用带默认值的新字段，现有工具注册代码无需一次性迁移；如有问题可忽略新增字段。
 - ToolExecutor 提取期间保留 `model_tools.handle_function_call()`，调用方无需同步迁移。
-- checkpoint 和 terminal 继续保持未注册状态，前两批出现问题时不会扩大执行权限。
+- checkpoint 保持未注册状态；terminal 尚未注册，因此 Batch 3 至 Batch 5 没有扩大命令执行权限。
 
 ## 验收标准
 
 - Batch 2E 的文件工具行为有完整、可重复的手工验证记录。
 - roadmap 与 handoff 不再停留在 Batch 1 / Batch 2C。
-- 下一批计划明确先做 ToolRegistry v2，不实现 terminal 或 checkpoint。
+- Batch 3、Batch 4、Batch 5 已按推荐顺序完成并通过集中回归。
+- 下一步明确为 Batch 6 Local Foreground Terminal 的源码对齐和独立设计，不直接实现。
 - 后续每批仍按接口一致性、`compileall`、CLI 手工行为和轻量不变量验证，不默认新增测试文件。

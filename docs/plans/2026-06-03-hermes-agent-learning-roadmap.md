@@ -385,7 +385,7 @@ agent 可保存 memory；新 session 能读取 memory；skill 能被列出和注
 
 ## Phase 10：Security / Approval / Execution
 
-**状态：Batch 1、Batch 2A 至 2E、Batch 3、Batch 4 已完成；下一步为 Batch 5 Minimal Checkpoint**
+**状态：Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 已完成；下一步为 Batch 6 Local Foreground Terminal 的源码对齐和设计**
 
 **目标：** 为强工具建立统一安全边界。Phase 10 不从 terminal executor 开始，而是先建立工具执行上下文、命令审批策略、文件路径安全策略和 dispatch 前 preflight，再分批接入文件工具、checkpoint 和 terminal。
 
@@ -473,11 +473,19 @@ Batch 4 验收：
 
 Batch 4 暂未实现 executor 类、并发、segmented execution、middleware、guardrails、checkpoint、terminal 或 dynamic registry refresh。
 
+**Batch 5：Minimal Checkpoint（已完成）**
+
+- 新增默认关闭的 checkpoint 配置和独立存储路径。
+- 使用单一共享 shadow Git object store，并以 per-workspace ref/index 隔离状态。
+- 实现快照、每 Provider/tool iteration 去重、无变化跳过、列举、真实数量裁剪和 Manager 级恢复。
+- `AIAgent` 透明持有 `CheckpointManager`；checkpoint 不注册为模型工具。
+- `write_file` / `patch` 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。
+- checkpoint 失败 fail-open，安全 preflight fail-closed。
+- 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`。
+- 暂不实现 checkpoint CLI、rollback UX、diff、全局容量限制、自动维护、legacy migration 或 terminal checkpoint。
+
 **后续批次：**
 
-- Batch 5：Minimal Checkpoint
-  - 在文件修改和后续破坏性 terminal 命令执行前创建最小 checkpoint。
-  - checkpoint 是 agent 透明基础设施，不作为普通 tool 暴露。
 - Batch 6：Terminal Local Backend
   - 最后接入最小 local foreground `terminal` tool。
   - 执行前调用 `check_command_approval()`，hardline block 永远不可被 `force`、`yolo` 或 `auto` 绕过。

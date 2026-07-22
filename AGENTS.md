@@ -53,7 +53,7 @@
 - Phase 10 Batch 2A 至 2E File Tools With Safety 已完成：`read_file`、`write_file`、`patch`、`search_files`。
 - Phase 10 Batch 3 ToolRegistry v2 已完成：`toolset`、`check_fn`、`generation` 和可用定义过滤已接入。
 - Phase 10 Batch 4 Minimal ToolExecutor 已完成：已建立 Provider definitions 范围快照和模块级顺序执行器。
-- Phase 10 Batch 5 Minimal Checkpoint 的 Task 1 至 Task 5 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复和 `AIAgent` iteration 生命周期已经实现。
-- `terminal`、checkpoint CLI、自动 checkpoint 的写工具 dispatch 接入、并发或 segmented ToolExecutor 尚未完成。
+- Phase 10 Batch 5 Minimal Checkpoint 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期和安全 preflight 后的自动写前 checkpoint 已实现。
+- `terminal`、checkpoint CLI、rollback UX、并发或 segmented ToolExecutor 尚未实现。
 
-下一步应继续执行 `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-plan.md` 的 Task 6：在安全 preflight 通过后、`write_file` / `patch` 真正 dispatch 前创建 best-effort checkpoint；不开始 terminal。
+下一步是 Phase 10 Batch 6 Local Foreground Terminal。开始设计前必须重新对齐最新版 Hermes 的 terminal、approval 和 execution backend 源码；先完成独立设计，不直接实现。
