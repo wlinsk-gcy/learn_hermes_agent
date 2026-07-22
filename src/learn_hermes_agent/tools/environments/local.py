@@ -487,3 +487,38 @@ def _redact_known_values(
         if secret:
             result = result.replace(secret, "[REDACTED]")
     return result
+
+
+def _build_subprocess_env(
+        sensitive_env_names: set[str],
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    env = os.environ.copy()
+
+    blocked = {
+        name.upper()
+        for name in sensitive_env_names
+        if name
+    }
+    # subprocess 不继承指定 API key、VIRTUAL_ENV 和 CONDA_PREFIX
+    blocked.update({"VIRTUAL_ENV", "CONDA_PREFIX"})
+    # 保存被移除变量的值，供输出层再次精确脱敏
+    secret_values: set[str] = set()
+
+    for key in list(env):
+        if key.upper() not in blocked:
+            continue
+
+        value = env.pop(key, None)
+        if value:
+            secret_values.add(value)
+    # secret 按长度降序排列，避免短值先替换后破坏长值匹配
+    return (
+        env,
+        tuple(
+            sorted(
+                secret_values,
+                key=len,
+                reverse=True,
+            )
+        ),
+    )
