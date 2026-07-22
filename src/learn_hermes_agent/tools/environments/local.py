@@ -5,6 +5,7 @@ import logging
 import ntpath
 import os
 import shutil
+import signal
 import subprocess
 from pathlib import Path
 import codecs
@@ -529,6 +530,7 @@ class LocalEnvironment:
     def __init__(self, bash_path: str) -> None:
         self.bash_path = bash_path
 
+    # 后台输出读取
     @staticmethod
     def _drain_output(
             proc: subprocess.Popen[bytes],
@@ -561,3 +563,56 @@ class LocalEnvironment:
                     collector.append(tail)
             except UnicodeDecodeError:
                 pass
+
+    # 进程树清理
+    @staticmethod
+    def _kill_process_tree(
+            proc: subprocess.Popen[bytes],
+    ) -> None:
+        """Windows 使用 taskkill /T /F 清理整个子进程树；POSIX 使用进程组信号。两边失败时都会降级到 proc.kill()"""
+        if _IS_WINDOWS:
+            try:
+                completed = subprocess.run(
+                    [
+                        "taskkill",
+                        "/PID",
+                        str(proc.pid),
+                        "/T",
+                        "/F",
+                    ],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=5,
+                    check=False,
+                    creationflags=_windows_hide_flags(),
+                )
+                if completed.returncode == 0:
+                    return
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+            try:
+                proc.kill()
+            except (OSError, ProcessLookupError):
+                pass
+            return
+
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                proc.kill()
+            except (OSError, ProcessLookupError):
+                pass
+            return
+
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
