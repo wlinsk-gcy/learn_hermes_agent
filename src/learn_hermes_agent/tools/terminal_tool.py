@@ -357,3 +357,20 @@ def terminal_tool(
         ),
         "error": None,
     }
+
+
+def register_tools(registry: ToolRegistry) -> None:
+    registry.register(
+        ToolEntry(
+            name="terminal",
+            description=(
+                "Execute one Bash command on the local host "
+                "in the foreground. Background processes and "
+                "interactive input are not supported."
+            ),
+            parameters=TERMINAL_PARAMETERS,
+            handler=terminal_tool,
+            toolset="terminal",
+            check_fn=check_terminal_requirements,
+        )
+    )
