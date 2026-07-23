@@ -2064,6 +2064,52 @@ PowerShell 向 Windows native 子进程传递包含空格的 JSON 时会拆分 a
 
 Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必须重新分析最新版 Hermes 的 approval surface、session cwd 和 persistent local terminal，再决定两者的实现先后顺序并形成独立设计；当前不直接开始下一批代码。
 
+## 2026-07-22 F1 / Provider 路线确认
+
+### 本次目标
+
+重新分析最新版 Hermes 的主要子系统和依赖边界，并允许按兴趣选择后续模块。
+
+### 已完成
+
+- 使用 Codegraph 重新分析参考仓库 HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`。
+- 确认 session cwd 是 terminal、file、code execution 和 delegate 的共享 runtime contract。
+- 确认 approval、Gateway、ACP 和后台进程都依赖稳定 session identity，不应先于该地基扩展。
+- 用户确认先执行 F1 Session Runtime Context，然后进入 Provider 方向。
+- F1 拆分为 F1A Session Identity / Persistent CWD 与 F1B Persistent Environment Snapshot。
+- 新增 F1 总体设计和 F1A 实施计划；尚未修改 `src/` 代码。
+
+### 修改文件
+
+- `AGENTS.md`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-22-f1-session-runtime-context-design.md`
+- `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`
+
+### 对照的 Hermes 源码
+
+- `agent/runtime_cwd.py`
+- `gateway/session_context.py`
+- `tools/terminal_tool.py`
+- `tools/environments/base.py`
+- `tools/environments/local.py`
+- `tools/file_tools.py`
+- `acp_adapter/session.py`
+
+### 设计结论
+
+- F1A 使用 ContextVar 绑定当前 dispatch context，并使用稳定 session key 保存进程内 cwd record。
+- 学习项目 interactive CLI 每 turn 会更换 task id，因此 runtime key 必须优先使用 session id。
+- cwd marker 与 environment snapshot 是两个可独立验证的机制，分别放入 F1A 和 F1B。
+- file safety、file handler、checkpoint 和 terminal handler 必须看到同一个有效 cwd。
+- F1A 不实现跨进程 cwd 恢复；F1B 不顺带实现 background/process、PTY 或 remote backend。
+
+### 下一步
+
+使用 `superpowers:executing-plans` 执行 `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`，从 Task 1 开始，每次只给一个小任务代码片段。F1A 完成后单独设计 F1B；F1 完成后再重新分析并设计 Provider 扩展。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

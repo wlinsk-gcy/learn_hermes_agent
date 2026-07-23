@@ -90,7 +90,7 @@ ToolRegistry v2
 
 `model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令；approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。下一批开始前必须重新读取最新版 Hermes，再决定 approval surface 与 persistent local session 的先后顺序。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。2026-07-22 已重新分析最新版 Hermes，并确认后续顺序为 F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot、Provider 扩展。当前不开始 approval UI、background/process、PTY、remote backend 或 Provider 代码。
 
 ## 文档地图
 
@@ -109,3 +109,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Bat
 - `docs/plans/2026-07-21-phase-10-batch-5-minimal-checkpoint-plan.md`：Batch 5 实施计划。
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-design.md`：Batch 6 Local Foreground Terminal 设计。
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`：Batch 6 实施计划。
+- `docs/plans/2026-07-22-f1-session-runtime-context-design.md`：F1 Session Runtime Context 总体设计。
+- `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`：F1A Session Runtime CWD 实施计划。

@@ -311,11 +311,16 @@
   - workspace 内 destructive terminal 在执行前创建 best-effort checkpoint；workspace 外命令不创建学习项目 checkpoint。
   - 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。
 
-下一步设计顺序：
+已确认的下一步顺序：
 
-1. 重新读取最新版 Hermes 的 approval surface、session cwd 和 persistent local terminal 实现。
-2. 比较“先补 approval surface”与“先补 persistent local session”的依赖、风险和验收边界。
-3. 形成新的独立设计和实施计划后再编码，不直接扩展到远程 backend、PTY 或后台进程。
+1. F1A Session Identity / Persistent CWD：稳定 session key、dispatch context 绑定、跨调用 cwd、terminal/file/checkpoint cwd 一致性。
+2. F1B Persistent Environment Snapshot：复刻命令前 source、命令后原子更新 export snapshot；仍不加入 background/process 或 PTY。
+3. Provider 方向：F1 完成后重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
+
+F1A 设计与计划见：
+
+- `docs/plans/2026-07-22-f1-session-runtime-context-design.md`
+- `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`
 
 暂未实现：
 

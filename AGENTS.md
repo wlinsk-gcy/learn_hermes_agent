@@ -57,4 +57,4 @@
 - Phase 10 Batch 6 Local Foreground Terminal 已完成：本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint 已实现。
 - checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发或 segmented ToolExecutor 尚未实现。
 
-Phase 10 Batch 6 已完成。开始下一批前必须重新对齐最新版 Hermes，再决定先实现 approval surface 还是 persistent local session；先完成独立设计，不直接实现。
+已重新对齐最新版 Hermes，并确认后续路线：先执行 F1 Session Runtime Context，再进入 Provider 方向。F1 拆为 F1A Session Identity / Persistent CWD 和 F1B Persistent Environment Snapshot；当前先执行 F1A，不实现 approval UI、background/process、PTY、remote backend 或 Provider 代码。
