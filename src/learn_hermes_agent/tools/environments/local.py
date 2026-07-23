@@ -842,8 +842,44 @@ def _extract_cwd_from_output(
 
 
 class LocalEnvironment:
-    def __init__(self, bash_path: str) -> None:
+    def __init__(
+            self,
+            bash_path: str,
+            *,
+            cwd: Path | None = None,
+            sensitive_env_names: set[str] | None = None,
+    ) -> None:
         self.bash_path = bash_path
+        self.cwd = (
+            cwd
+            if cwd is not None
+            else Path.cwd()
+        ).expanduser().resolve()
+
+        self._session_id = uuid4().hex[:12]
+
+        self._snapshot_dir = (
+                Path(tempfile.gettempdir())
+                / "learn_hermes_agent"
+                / "terminal"
+        )
+        self._snapshot_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self._snapshot_path = (
+                self._snapshot_dir
+                / f"snapshot-{self._session_id}.sh"
+        )
+
+        self._snapshot_ready = False
+        self._prefer_nonlogin = False
+        self._snapshot_timeout = 30
+
+        self._initial_sensitive_env_names = set(
+            sensitive_env_names or ()
+        )
 
     def execute(
             self,

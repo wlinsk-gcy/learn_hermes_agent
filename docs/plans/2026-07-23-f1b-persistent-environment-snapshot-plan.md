@@ -210,6 +210,9 @@ class LocalEnvironment:
         self._snapshot_ready = False
         self._prefer_nonlogin = False
         self._snapshot_timeout = 30
+        self._initial_sensitive_env_names = set(
+            sensitive_env_names or ()
+        )
 ```
 
 不要把 snapshot 放进 workspace，避免 file tools、Git 状态和模型上下文看到内部状态。
@@ -550,7 +553,7 @@ Task 4 再让 `execute()` 改用该方法，本步骤先只增加方法。
 
 ```python
         self.init_session(
-            sensitive_env_names or set()
+            self._initial_sensitive_env_names
         )
 ```
 
