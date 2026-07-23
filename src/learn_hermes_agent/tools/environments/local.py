@@ -1223,6 +1223,73 @@ class LocalEnvironment:
         except OSError:
             return False
 
+    def init_session(
+            self,
+            sensitive_env_names: set[str],
+    ) -> None:
+        """
+        完整流程：
+
+        过滤子进程环境
+            → 生成候选路径
+            → login Bash 执行 bootstrap
+            → 检查退出码
+            → 校验并原子发布
+            → 标记 snapshot ready
+
+        任一步失败都会删除候选文件并探测 non-login fallback，不影响 terminal 后续降级执行
+        """
+        env, _ = _build_subprocess_env(
+            sensitive_env_names
+        )
+        candidate = self._new_snapshot_candidate()
+
+        try:
+            proc = self._run_bash(
+                self._build_bootstrap_script(
+                    candidate,
+                    sensitive_env_names,
+                ),
+                cwd=self.cwd,
+                env=env,
+                login=True,
+            )
+
+            returncode = self._wait_internal_process(
+                proc,
+                self._snapshot_timeout,
+            )
+
+            if returncode != 0:
+                raise RuntimeError(
+                    "snapshot bootstrap failed with "
+                    f"exit code {returncode}"
+                )
+
+            if not self._promote_snapshot_candidate(
+                    candidate,
+                    sensitive_env_names,
+            ):
+                raise RuntimeError(
+                    "snapshot bootstrap did not publish "
+                    "a valid snapshot"
+                )
+
+        except Exception as exc:
+            self._snapshot_ready = False
+            self._remove_file(candidate)
+            self._prefer_nonlogin = (
+                self._probe_nonlogin(env)
+            )
+            logger.warning(
+                "Terminal snapshot initialization "
+                "failed: %s",
+                exc,
+            )
+            return
+
+        self._snapshot_ready = True
+
     def execute(
             self,
             command: str,
