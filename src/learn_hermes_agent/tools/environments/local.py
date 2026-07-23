@@ -902,6 +902,88 @@ class LocalEnvironment:
         except OSError:
             pass
 
+    @staticmethod
+    def _candidate_contains_sensitive_name(
+            candidate: Path,
+            sensitive_env_names: set[str],
+    ) -> bool:
+        """
+        export -p 会列出当前 Shell 中所有已导出的环境变量，例如：
+
+        export OPENAI_API_KEY="secret"
+        export MODE="debug"
+        export -p
+
+        输出类似：
+
+        declare -x MODE="debug"
+        declare -x OPENAI_API_KEY="secret"
+
+        其中：
+
+        - declare：声明变量。
+        - -x：把变量标记为 exported environment variable。
+        - 这些内容写入快照后，下次 source 就能恢复环境。
+
+        正常情况下，我们会先执行：
+
+        unset -- OPENAI_API_KEY
+
+        再执行 export -p，这样密钥不会写入快照。
+
+        但 readonly 变量不能删除：
+
+        readonly OPENAI_API_KEY="secret"
+        unset OPENAI_API_KEY
+        # 报错，变量仍然存在
+
+        因此 Python 会再读取候选快照，检查是否出现：
+
+        declare -x OPENAI_API_KEY=...
+
+        发现后返回 True，表示“候选快照不安全”，不允许替换正式快照。
+
+        “Fail-closed”指：
+
+        确认安全       → 允许提交
+        发现敏感变量   → 拒绝提交
+        文件无法读取   → 同样拒绝提交
+
+        如果读取失败却返回 False，就相当于“虽然没检查成功，但假定安全并提交”，这叫 fail-open，可能泄漏密钥。
+        """
+        blocked = set(
+            _snapshot_sensitive_env_names(
+                sensitive_env_names
+            )
+        )
+        if not blocked:
+            return False
+
+        try:
+            lines = candidate.read_text(
+                encoding="utf-8",
+                errors="replace",
+            ).splitlines()
+        except OSError:
+            # 无法确认内容安全时拒绝提交
+            return True
+
+        prefix = "declare -x "
+
+        for line in lines:
+            if not line.startswith(prefix):
+                continue
+
+            name = line[len(prefix):].split(
+                "=",
+                1,
+            )[0]
+
+            if name in blocked:
+                return True
+
+        return False
+
     def execute(
             self,
             command: str,
