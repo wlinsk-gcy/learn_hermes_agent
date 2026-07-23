@@ -624,6 +624,75 @@ def _wrap_command_with_cwd_marker(
     return wrapped_command, marker
 
 
+def _extract_cwd_from_output(
+        output: str,
+        marker: str,
+) -> tuple[str, Path | None]:
+    """接收完整输出和本次随机 marker，返回“清理后的输出”和“解析出的 cwd”"""
+    # 空输入直接返回，没有输出或 marker 时无法解析，也不修改原输出
+    if not output or not marker:
+        return output, None
+    # rfind() 从右向左查找，寻找最后一个 marker，返回 closing marker 的起始位置；找不到返回 -1
+    closing_index = output.rfind(marker)
+    # 如果连结束 marker 都没有，说明输出不完整
+    if closing_index < 0:
+        return output, None
+    # 寻找对应的 opening marker，只在 closing marker 前面查找，并取最后一个匹配项
+    opening_index = output.rfind(
+        marker,
+        0,
+        closing_index,
+    )
+    # 检查 opening marker，如果只有一个 marker，不能确定 cwd 边界，因此保持输出不变
+    if opening_index < 0:
+        return output, None
+    # 提取两个 marker 之间的 cwd，例如：MARKER/d/project/srcMARKER， 提取出：/d/project/src
+    cwd_text = output[
+        opening_index + len(marker):
+        closing_index
+    ].strip()
+    # 初始化内部内容的删除起点，默认从 opening marker 开始删除
+    marker_start = opening_index
+    # 检查 marker 前是否有 \r\n，Windows 风格换行占两个字符。如果存在，就连同 wrapper 注入的换行一起删除。max(0, ...) 防止索引小于零。
+    if output[max(0, marker_start - 2):marker_start] == "\r\n":
+        marker_start -= 2
+    # 检查普通 \n：POSIX/Git Bash 通常使用单字符换行。
+    elif output[max(0, marker_start - 1):marker_start] == "\n":
+        marker_start -= 1
+    # 计算 closing marker 后的位置：此时 marker_end 指向 closing marker 后的第一个字符。
+    marker_end = closing_index + len(marker)
+    # 删除 closing marker 后的换行，避免内部 cwd 信息被删除后留下多余空行
+    if output[marker_end:marker_end + 2] == "\r\n":
+        marker_end += 2
+    elif output[marker_end:marker_end + 1] == "\n":
+        marker_end += 1
+    # 拼接清理后的用户输出，保留内部 marker 区域之前和之后的内容
+    cleaned_output = (
+            output[:marker_start]
+            + output[marker_end:]
+    )
+    # 如果 marker 中的 cwd 为空，Path("") 会解析成当前目录
+    # 拒绝空 cwd，marker 仍会被删除，但不会把空字符串误认为当前目录
+    if not cwd_text:
+        return cleaned_output, None
+    # 转换 Git Bash 路径，在 Windows 上把 /d/project 转成 D:\project
+    native_cwd = _msys_to_windows_path(
+        cwd_text
+    )
+    # 构造规范绝对路径，展开 ~、处理 ./.. 并转成绝对路径。解析失败时保留已清理输出，但不更新 cwd
+    try:
+        cwd_path = Path(native_cwd).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return cleaned_output, None
+    # 验证它是真实目录，不存在或是普通文件时拒绝记录
+    if not cwd_path.is_dir():
+        return cleaned_output, None
+    # 例如：
+    # 输入：hello\nMARKER/d/project/srcMARKER\n
+    # 输出：("hello", Path("D:/project/src"))
+    return cleaned_output, cwd_path
+
+
 class LocalEnvironment:
     def __init__(self, bash_path: str) -> None:
         self.bash_path = bash_path
