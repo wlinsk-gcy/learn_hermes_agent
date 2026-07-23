@@ -299,6 +299,9 @@ login bootstrap 失败时：
 - session 压缩产生新 key 时，在锁内迁移同一个 environment 对象，不复制快照。
 - Python 退出时通过 `atexit` 清理全部 environment。
 - `cleanup()` 幂等删除正式快照和遗留候选文件。
+- Windows 快照使用用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`，对齐
+  Hermes 将本地 terminal artifact 放入应用 home cache 的意图；POSIX 继续使用系统
+  temp。`chmod(0o600)` 只作为 POSIX mode 不变量，Windows 不用它代替 NTFS ACL 判断。
 
 F1B 不维护尚无消费者的 `_last_activity`，也不实现 Hermes 的后台 idle-cleanup
 线程。两者留到长期运行 Gateway 阶段；当前 CLI 依赖显式 session 生命周期和

@@ -181,6 +181,31 @@ Expected: 包含 `OPENAI_API_KEY`、`VIRTUAL_ENV`、`CONDA_PREFIX`，不包含
 保持旧调用暂时兼容，增加初始 cwd、敏感变量和 snapshot state：
 
 ```python
+def _terminal_snapshot_dir() -> Path:
+    if _IS_WINDOWS:
+        local_appdata = os.environ.get(
+            "LOCALAPPDATA",
+            "",
+        ).strip()
+        base = (
+            Path(local_appdata)
+            if local_appdata
+            else Path.home() / "AppData" / "Local"
+        )
+        return (
+            base
+            / "learn_hermes_agent"
+            / "cache"
+            / "terminal"
+        )
+
+    return (
+        Path(tempfile.gettempdir())
+        / "learn_hermes_agent"
+        / "terminal"
+    )
+
+
 class LocalEnvironment:
     def __init__(
             self,
@@ -194,11 +219,7 @@ class LocalEnvironment:
             cwd if cwd is not None else Path.cwd()
         ).expanduser().resolve()
         self._session_id = uuid4().hex[:12]
-        self._snapshot_dir = (
-            Path(tempfile.gettempdir())
-            / "learn_hermes_agent"
-            / "terminal"
-        )
+        self._snapshot_dir = _terminal_snapshot_dir()
         self._snapshot_dir.mkdir(
             parents=True,
             exist_ok=True,
@@ -216,6 +237,9 @@ class LocalEnvironment:
 ```
 
 不要把 snapshot 放进 workspace，避免 file tools、Git 状态和模型上下文看到内部状态。
+Windows 对齐最新版 Hermes 的用户级应用缓存目录意图，不继续使用通用 `%TEMP%`。
+`chmod(0o600)` 在 POSIX 上作为文件权限不变量；Windows 的 NTFS ACL 不由该 mode
+值表达，因此 Windows 验收检查用户级目录归属，不检查 `stat` 的 `0o600` 显示值。
 Task 2 只建立所有权，不调用尚未实现的 `init_session()`，保证该 Task 完成后现有
 terminal 仍可运行。
 

@@ -79,6 +79,7 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 5：Minimal Checkpoint，包括默认关闭的配置、共享 shadow Git store、per-workspace ref/index、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的 `write_file` / `patch` 自动写前 checkpoint。
 - Phase 10 Batch 6：Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、ANSI 清理、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint。
 - F1A：Session Identity / Persistent CWD，包括稳定 session runtime key、dispatch effective context 绑定、线程安全的进程内 cwd record、命令结束 cwd marker、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
+- F1B：Persistent Environment Snapshot，包括 login shell bootstrap、同 session 跨调用的 `export` / `unset` 持久化、敏感变量过滤、原子候选提交、timeout 不提交、environment cache，以及 `/new` / compression continuation 生命周期。
 
 Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
@@ -89,9 +90,9 @@ ToolRegistry v2
   -> Local Foreground Terminal
 ```
 
-`model_tools.py` 继续负责 Registry dispatch、安全 preflight、effective context 解析和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令，并已支持同一进程、同一 session 内的跨调用 cwd；approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight、effective context 解析和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令，并已支持同一进程、同一 session 内的跨调用 cwd 和 exported environment；approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A 已对齐最新版 Hermes 的 session cwd、local environment、terminal 和 file path resolution 设计意图。下一步先重新分析并设计 F1B Persistent Environment Snapshot；F1B 完成后才进入 Provider 扩展。当前不开始 approval UI、background/process、PTY、remote backend 或 Provider 代码。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A 与 F1B 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session cwd、environment snapshot、terminal cache 和 CLI session 生命周期设计意图；Windows 快照使用用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`，并由 Python 控制最终原子提交，避免 timeout 后仍运行的 Bash wrapper 发布候选。下一步重新分析最新版 Hermes 的 Provider 链路并建立独立设计，当前不提前实现 approval UI、background/process、PTY 或 remote backend。
 
 ## 文档地图
 
@@ -112,3 +113,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Bat
 - `docs/plans/2026-07-22-phase-10-batch-6-local-foreground-terminal-plan.md`：Batch 6 实施计划。
 - `docs/plans/2026-07-22-f1-session-runtime-context-design.md`：F1 Session Runtime Context 总体设计。
 - `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`：F1A Session Runtime CWD 实施计划。
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-design.md`：F1B Persistent Environment Snapshot 设计。
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`：F1B Persistent Environment Snapshot 实施计划。

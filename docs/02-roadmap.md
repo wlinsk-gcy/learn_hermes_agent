@@ -14,7 +14,7 @@
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
-- F1A Session Identity / Persistent CWD 已完成；下一步是 F1B Persistent Environment Snapshot 的 Hermes 源码重新对齐和独立设计。
+- F1A Session Identity / Persistent CWD 与 F1B Persistent Environment Snapshot 已完成；下一步重新对齐最新版 Hermes 的 Provider 链路并建立独立设计。
 
 ## Phase 0：项目基础与约定
 
@@ -316,21 +316,29 @@
   - `LocalEnvironment` 使用随机 marker 回报命令结束 cwd，保留原退出码，并在 timeout 时拒绝 cwd 更新。
   - terminal、四个 file handler 和 destructive terminal checkpoint 使用同一个 session cwd；terminal 可离开 workspace，但 file tools 仍受 `workspace_root` 阻断。
   - `/new` 清理旧 session cwd；compression continuation 先继承 cwd，再清理父 session key。
+- F1B：Persistent Environment Snapshot：
+  - login shell 首次 bootstrap 捕获 exported environment、公开函数、alias 和必要 shell option，后续命令 source 同一 session 快照。
+  - 命令完成后生成独立候选文件，由 Python 校验敏感变量并原子替换正式快照；非零退出仍提交，timeout 不提交。
+  - Provider secret、`VIRTUAL_ENV` 和 `CONDA_PREFIX` 不进入子进程或正式快照；内部声明、cwd marker 和快照路径不进入公开输出。
+  - terminal environment 按稳定 runtime key 缓存；`/new` 清理，compression continuation 迁移同一对象，进程退出时通过 `atexit` 清理。
+  - Windows 快照位于用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`；最终发布由 Python 控制，以适配 timeout 后 Bash wrapper 仍可能继续运行的行为。
+  - 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`。
 
 已确认的下一步顺序：
 
-1. F1B Persistent Environment Snapshot：先重新对齐最新版 Hermes，再设计命令前 source、命令后原子更新 export snapshot；仍不加入 background/process 或 PTY。
-2. Provider 方向：F1B 完成后重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
+1. Provider 方向：重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
 
-F1 总体设计与已完成的 F1A 计划见：
+F1 总体设计与已完成的 F1A / F1B 文档见：
 
 - `docs/plans/2026-07-22-f1-session-runtime-context-design.md`
 - `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-design.md`
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`
 
 暂未实现：
 
 - checkpoint CLI、rollback UX、diff、全局容量限制、自动维护和 legacy migration。
-- approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复和远程执行 backend。
+- approval UI、background/process、PTY、跨进程 cwd/env 恢复和远程执行 backend。
 - 并发工具执行、middleware、guardrails。
 - Hermes 完整 registry 动态能力和完整 search/patch 高级模式。
 
@@ -349,6 +357,9 @@ F1 总体设计与已完成的 F1A 计划见：
 - hardline 命令继续优先于 yolo/auto 被阻断；被阻断或待审批命令不执行 handler 或 checkpoint callback。
 - 同一 session 的 terminal `cd` 会影响后续 terminal 和相对 file tool；不同 session 互不影响。
 - timeout、无效 marker 或无效目录不更新 session cwd；workspace 外相对 file tool 仍被阻断。
+- 同一 session 的 `export` / `unset` 会影响后续 terminal 调用，普通 local variable 不持久化，不同 session 环境互相隔离。
+- 非零退出前完成的环境修改会提交；timeout 只删除候选并保留上一份正式快照。
+- Provider secret 不被子进程继承，也不出现在正式快照或公开 terminal 输出。
 
 ## Phase 11：Gateway
 

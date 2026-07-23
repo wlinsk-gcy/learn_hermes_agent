@@ -56,6 +56,7 @@
 - Phase 10 Batch 5 Minimal Checkpoint 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期和安全 preflight 后的自动写前 checkpoint 已实现。
 - Phase 10 Batch 6 Local Foreground Terminal 已完成：本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint 已实现。
 - F1A Session Identity / Persistent CWD 已完成：稳定 session runtime key、dispatch context 绑定、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 `/new` 和 compression continuation 生命周期已接入。
-- checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、并发或 segmented ToolExecutor 尚未实现。
+- F1B Persistent Environment Snapshot 已完成：login shell bootstrap、同 session 跨 terminal 调用的 export/unset 持久化、敏感变量过滤、原子候选提交、timeout 回滚、environment cache 和 CLI session 生命周期已接入。
+- checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、并发或 segmented ToolExecutor 尚未实现。
 
-已重新对齐最新版 Hermes，并确认后续路线：F1A Session Identity / Persistent CWD 已完成；下一步先重新对齐 Hermes 的 environment snapshot 链路并独立设计 F1B Persistent Environment Snapshot。F1B 完成后再重新分析 Provider 方向；当前不实现 approval UI、background/process、PTY、remote backend 或 Provider 代码。
+F1 Session Runtime Context 的 F1A 与 F1B 已完成，并对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`。下一步重新分析最新版 Hermes 的 Provider streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再建立独立设计；当前不提前实现 approval UI、background/process、PTY 或 remote backend。

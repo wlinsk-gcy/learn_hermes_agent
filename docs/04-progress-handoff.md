@@ -97,12 +97,13 @@
 - Phase 10 Batch 5：已完成 Minimal Checkpoint，包括配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的自动写前 checkpoint。
 - Phase 10 Batch 6：已完成 Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal 注册和 workspace 内 destructive terminal checkpoint。
 - F1A：已完成 Session Identity / Persistent CWD，包括稳定 session key、dispatch effective context、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
+- F1B：已完成 Persistent Environment Snapshot，包括 login shell bootstrap、同 session exported environment 持久化、敏感变量过滤、原子候选提交、timeout 回滚、environment cache 和 CLI session 生命周期。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -136,27 +137,15 @@
 
 ## 下一个 session 的推荐操作
 
-从 Phase 7 开始，不要跳到真实 provider、gateway、memory 或 skills。
+F1A 与 F1B 已完成。下一步进入 Provider 方向，但必须先重新分析最新版 Hermes，不能直接按旧路线实现。
 
 建议步骤：
 
-1. 阅读 `docs/00-overview.md`。
-2. 阅读 `docs/02-roadmap.md`。
-3. 阅读 `docs/plans/2026-06-03-hermes-agent-learning-roadmap.md`。
-4. 阅读当前实现文件：
-   - `src/learn_hermes_agent/agent/messages.py`
-   - `src/learn_hermes_agent/agent/core.py`
-   - `src/learn_hermes_agent/providers/base.py`
-   - `src/learn_hermes_agent/providers/fake.py`
-   - `src/learn_hermes_agent/tools/registry.py`
-   - `src/learn_hermes_agent/tools/echo.py`
-   - `src/learn_hermes_agent/model_tools.py`
-   - `src/learn_hermes_agent/agent/system_prompt.py`
-   - `src/learn_hermes_agent/agent/prompt_builder.py`
-   - `src/learn_hermes_agent/state/session_db.py`
-   - `src/learn_hermes_agent/cli/main.py`
-5. 先 review Phase 6 当前代码是否仍可运行。
-6. 开始 Phase 7：Context Compression 和 Budget 的设计，不接真实 provider 或 gateway。
+1. 阅读 `docs/00-overview.md`、`docs/02-roadmap.md` 和本文件最新进度。
+2. 阅读 F1B 设计与实施计划，确认 terminal runtime 当前边界。
+3. 使用 Codegraph 对齐参考仓库 HEAD，追踪 conversation loop 到 Provider request、streaming、response normalization、credential 和 failover 的真实链路。
+4. 对比当前 `src/learn_hermes_agent/providers/` 与参考实现，列出缺口和依赖顺序。
+5. 形成 Provider 方向的独立设计与实施计划；设计确认前不修改 Provider 源码。
 
 ## 重要约束
 
@@ -2178,6 +2167,76 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 ### 下一步
 
 先重新分析最新版 Hermes 的 environment snapshot、shell bootstrap、原子 snapshot 更新和 session 隔离实现，形成 F1B Persistent Environment Snapshot 的独立设计与实施计划。F1B 完成后再重新分析 Provider streaming、Anthropic、Gemini、Codex Responses 和 credential/failover；当前不开始 Provider 代码。
+
+## 2026-07-23 F1B Persistent Environment Snapshot 已完成
+
+### 本次目标
+
+在不增加 background/process、PTY、remote backend 或 Provider 扩展的前提下，完成同一进程、同一 session 内的 exported shell environment 持久化，并保持 F1A cwd、安全过滤和 CLI session 生命周期不变量。
+
+### 已完成
+
+- `LocalEnvironment` 首次构造时通过 login Bash 建立 session snapshot，捕获 exported environment、公开函数、alias 和必要 shell option。
+- 后续命令先 source 正式快照，执行后生成独立候选；Python 校验敏感变量后使用 `os.replace()` 原子提交。
+- 正常完成和非零退出都会提交已完成的 `export` / `unset`；timeout 删除候选并保留上一份正式快照。
+- Provider secret、`VIRTUAL_ENV` 和 `CONDA_PREFIX` 在 bootstrap、命令执行和正式提交前均被过滤；读取或校验失败采用 fail-closed，不发布候选。
+- 同一 runtime key 复用一个 `LocalEnvironment`，不同 session 隔离；创建使用 per-key lock，避免重复 bootstrap。
+- `/new` 清理旧 environment；compression continuation 将同一个 environment 从父 key 迁移到 child key；`atexit` 清理进程内全部 environment。
+- terminal cwd、file tools 和 checkpoint 继续共享 F1A effective context；environment snapshot 没有改变 terminal schema。
+- Windows snapshot 从通用 `%TEMP%` 移到用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`，对齐最新版 Hermes 的应用 home cache 设计意图。
+- Windows timeout 后 Git Bash wrapper 可能继续运行，因此最终 snapshot 发布由 Python 控制；Bash 只能生成候选，不能直接覆盖正式快照。
+
+### 修改文件
+
+- `src/learn_hermes_agent/tools/environments/local.py`
+- `src/learn_hermes_agent/tools/terminal_tool.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `AGENTS.md`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-design.md`
+- `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`
+
+### 对照的 Hermes 源码
+
+- 参考 HEAD：`477c08b44766ace8b890faa72bf82ecbcf2b3ba8`
+- `tools/environments/base.py`
+  - session snapshot bootstrap、命令前 source、命令后更新、cwd marker 和失败回退意图。
+- `tools/environments/local.py`
+  - Windows Git Bash 路径转换、启动探测、用户级 terminal cache 目录和本地进程执行。
+- `tools/terminal_tool.py`
+  - runtime key environment cache、创建锁、session 迁移、清理和 `atexit` 生命周期。
+- `hermes_constants.py`
+  - Windows 平台默认 Hermes home 使用 `%LOCALAPPDATA%\hermes`。
+
+### 验证方式
+
+- `uv run python -m compileall src` 退出码为 0。
+- `doctor`、九工具 definitions 和 Python argv 形式的 echo `call-tool` 均通过；terminal schema 仍只有 `command`、`timeout`、`workdir`。
+- 持久化不变量通过：`export` 持久化、local variable 不持久化、`unset` 持久化、非零退出提交、timeout 不提交、session A/B 隔离。
+- cwd/file 回归通过：terminal `cd` 影响后续 terminal 和相对 file tool；timeout 不更新 cwd；workspace 外 file path 仍被 safety 阻断。
+- 敏感信息验证通过：动态 Provider env 对子命令不可见，变量名和值不在正式 snapshot 中，公开输出不含 `declare -x`、cwd marker 或 snapshot 路径。
+- Windows 实际创建路径为 `C:\Users\admin\AppData\Local\learn_hermes_agent\cache\terminal`；`cleanup()` 后正式 snapshot 不存在。
+- `git diff --check` 无 whitespace error；未跟踪的 `sandbox/` 是既有用户状态，未修改。
+
+### 设计结论
+
+- F1B 持久化的是 exported shell state，不是完整 Bash 进程；普通 local variable、当前 shell PID 和未导出状态不会跨调用保留。
+- snapshot 是每个 runtime key 独立的 terminal runtime state，不写入 SessionStore，也不提供跨 Python 进程恢复。
+- 命令退出码和环境提交是两个维度：非零退出不代表此前环境修改没有发生；timeout 则不能安全确认 wrapper 完成，因此不提交。
+- 原子替换只能防止 reader 看到半文件；敏感名称扫描和 Python-controlled promotion 负责提交授权。
+- Windows 的 `chmod(0o600)` 不能表达 NTFS ACL。Windows 验收检查用户级缓存路径；POSIX 才检查 mode 权限不变量。
+- 旧 `%TEMP%\learn_hermes_agent\terminal` 目录不做自动全量清扫，避免误删仍由旧进程使用的随机 session 文件。
+
+### 尚未实现
+
+- 跨进程 cwd/env 恢复、background/process、PTY、remote backend、idle cleanup、并发环境变更的顺序合并。
+- approval UI、checkpoint CLI、rollback UX 和并发或 segmented ToolExecutor。
+
+### 下一步
+
+重新分析最新版 Hermes 的 Provider streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，形成独立设计与实施计划；F1B 不提前实现任何 Provider 代码。
 
 ## 后续进度模板
 
