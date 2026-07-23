@@ -1485,7 +1485,11 @@ class LocalEnvironment:
         #  Windows 终止 sleep 后，Bash wrapper 仍可能继续输出 marker。
         # 必须使用 timed_out 这个真实状态，而不能假设 timeout 时一定没有 marker。
         if timed_out:
+            # timeout：resolved_cwd 已被强制设为 None，不会更新
             resolved_cwd = None
+        if resolved_cwd is not None:
+            # 命令完成并返回有效 cwd marker：更新 LocalEnvironment.cwd
+            self.cwd = resolved_cwd
         output = _strip_ansi(output)
         output = _redact_known_values(
             output,
