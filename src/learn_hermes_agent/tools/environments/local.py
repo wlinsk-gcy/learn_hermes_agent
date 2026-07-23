@@ -165,6 +165,40 @@ def _resolve_shell_init_files() -> list[str]:
     return resolved
 
 
+def _prepend_shell_init(
+        command: str,
+        files: list[str],
+) -> str:
+    """
+    前置加载初始化文件
+
+    生成的脚本类似：
+
+    set +e
+    [ -r '/home/user/.profile' ] && . '/home/user/.profile' 2>/dev/null || true
+    原 bootstrap 命令
+    """
+    if not files:
+        # 没有文件时原样返回命令
+        return command
+    # set +e 和 || true：配置文件失败不能终止 bootstrap
+    prelude = ["set +e"]
+
+    for path in files:
+        # 安全处理路径中的空格和单引号
+        quoted = _quote_bash_path(path)
+        prelude.append(
+            # -r：只 source 可读文件
+            f"[ -r {quoted} ] && . {quoted} "
+            "2>/dev/null || true"
+        )
+
+    return "\n".join((
+        *prelude,
+        command,
+    ))
+
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
