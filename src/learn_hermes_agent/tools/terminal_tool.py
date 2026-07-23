@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import atexit # Python 标准库，用于注册“程序正常退出时执行的函数”
+import atexit  # Python 标准库，用于注册“程序正常退出时执行的函数”
 import re
 import threading
 from pathlib import Path
@@ -215,12 +215,12 @@ def cleanup_terminal_environments() -> None:
         # cleanup() 本身幂等，因此显式清理后再次触发 atexit 也安全
         environment.cleanup()
 
+
 # Python 正常退出时自动删除所有正式快照和候选文件
 atexit.register(
     # 传的是函数对象，所以不能加括号
     cleanup_terminal_environments
 )
-
 
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
 # - nohup：忽略挂断信号，常用于让程序持续运行。
@@ -529,6 +529,15 @@ def terminal_tool(
     # 这样 terminal 的默认目录和相对 workdir 都基于当前 session cwd
     context = get_current_tool_execution_context()
 
+    runtime_key = (
+        context.runtime_key
+        if context is not None
+        else "default"
+    )
+    sensitive_env_names = (
+        _provider_secret_env_names(config)
+    )
+
     try:
         workdir = _resolve_workdir(
             arguments.get("workdir"),
@@ -544,7 +553,14 @@ def terminal_tool(
             f"terminal is unavailable: {exc}"
         )
 
-    environment = LocalEnvironment(bash)
+    environment = _get_or_create_environment(
+        runtime_key=runtime_key,
+        bash_path=bash,
+        cwd=workdir,
+        sensitive_env_names=(
+            sensitive_env_names
+        ),
+    )
     try:
         result = environment.execute(
             command,
@@ -553,9 +569,8 @@ def terminal_tool(
             max_output_chars=terminal_config[
                 "max_output_chars"
             ],
-            sensitive_env_names=(
-                _provider_secret_env_names(config)
-            ),
+            #  这样配置只解析一次，同一个 runtime_key 开始复用 environment
+            sensitive_env_names=sensitive_env_names,
         )
     except OSError as exc:
         return _error_result(
