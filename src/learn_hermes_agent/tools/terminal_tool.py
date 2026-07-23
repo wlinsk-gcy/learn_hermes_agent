@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import atexit
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,21 @@ _STATIC_SENSITIVE_ENV_NAMES = {
     "OPENROUTER_API_KEY",
     "ANTHROPIC_API_KEY",
 }
+# 保存 runtime_key -> LocalEnvironment
+_active_environments: dict[
+    str,
+    LocalEnvironment,
+] = {}
+# 保护 environment 映射
+_env_lock = threading.Lock()
+# 保证相同 key 只有一个线程负责创建
+_creation_locks: dict[
+    str,
+    threading.Lock,
+] = {}
+# 保护创建锁映射自身
+_creation_locks_lock = threading.Lock()
+
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
 # - nohup：忽略挂断信号，常用于让程序持续运行。
 # - disown：把任务从当前 shell 的任务管理中移除。

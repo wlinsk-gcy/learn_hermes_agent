@@ -760,10 +760,10 @@ import threading
 在模块常量区增加：
 
 ```python
-_ACTIVE_ENVIRONMENTS: dict[str, LocalEnvironment] = {}
-_ENV_LOCK = threading.Lock()
-_CREATION_LOCKS: dict[str, threading.Lock] = {}
-_CREATION_LOCKS_LOCK = threading.Lock()
+_active_environments: dict[str, LocalEnvironment] = {}
+_env_lock = threading.Lock()
+_creation_locks: dict[str, threading.Lock] = {}
+_creation_locks_lock = threading.Lock()
 ```
 
 **Step 2: 增加按 key 创建锁**
@@ -772,11 +772,11 @@ _CREATION_LOCKS_LOCK = threading.Lock()
 def _get_creation_lock(
         runtime_key: str,
 ) -> threading.Lock:
-    with _CREATION_LOCKS_LOCK:
-        lock = _CREATION_LOCKS.get(runtime_key)
+    with _creation_locks_lock:
+        lock = _creation_locks.get(runtime_key)
         if lock is None:
             lock = threading.Lock()
-            _CREATION_LOCKS[runtime_key] = lock
+            _creation_locks[runtime_key] = lock
         return lock
 ```
 
@@ -790,8 +790,8 @@ def _get_or_create_environment(
         cwd: Path,
         sensitive_env_names: set[str],
 ) -> LocalEnvironment:
-    with _ENV_LOCK:
-        environment = _ACTIVE_ENVIRONMENTS.get(
+    with _env_lock:
+        environment = _active_environments.get(
             runtime_key
         )
     if environment is not None:
@@ -799,8 +799,8 @@ def _get_or_create_environment(
 
     creation_lock = _get_creation_lock(runtime_key)
     with creation_lock:
-        with _ENV_LOCK:
-            environment = _ACTIVE_ENVIRONMENTS.get(
+        with _env_lock:
+            environment = _active_environments.get(
                 runtime_key
             )
         if environment is not None:
@@ -811,14 +811,14 @@ def _get_or_create_environment(
             cwd=cwd,
             sensitive_env_names=sensitive_env_names,
         )
-        with _ENV_LOCK:
-            _ACTIVE_ENVIRONMENTS[
+        with _env_lock:
+            _active_environments[
                 runtime_key
             ] = environment
         return environment
 ```
 
-构造 environment 时不能持有 `_ENV_LOCK`，因为 login bootstrap 可能等待几十秒。
+构造 environment 时不能持有 `_env_lock`，因为 login bootstrap 可能等待几十秒。
 
 **Step 4: 增加显式清理**
 
@@ -830,8 +830,8 @@ def clear_terminal_environment(
     creation_lock = _get_creation_lock(key)
 
     with creation_lock:
-        with _ENV_LOCK:
-            environment = _ACTIVE_ENVIRONMENTS.pop(
+        with _env_lock:
+            environment = _active_environments.pop(
                 key,
                 None,
             )
@@ -855,19 +855,19 @@ def move_terminal_environment(
         return
 
     replaced: LocalEnvironment | None = None
-    with _ENV_LOCK:
-        environment = _ACTIVE_ENVIRONMENTS.pop(
+    with _env_lock:
+        environment = _active_environments.pop(
             source,
             None,
         )
         if environment is None:
             return
 
-        replaced = _ACTIVE_ENVIRONMENTS.pop(
+        replaced = _active_environments.pop(
             target,
             None,
         )
-        _ACTIVE_ENVIRONMENTS[target] = environment
+        _active_environments[target] = environment
 
     if (
             replaced is not None
@@ -882,11 +882,11 @@ def move_terminal_environment(
 
 ```python
 def cleanup_terminal_environments() -> None:
-    with _ENV_LOCK:
+    with _env_lock:
         environments = tuple(
-            _ACTIVE_ENVIRONMENTS.values()
+            _active_environments.values()
         )
-        _ACTIVE_ENVIRONMENTS.clear()
+        _active_environments.clear()
 
     for environment in environments:
         environment.cleanup()
