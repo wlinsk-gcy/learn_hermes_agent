@@ -14,7 +14,10 @@ from learn_hermes_agent.tools.registry import (
     ToolEntry,
     ToolRegistry,
 )
-from learn_hermes_agent.agent.tool_context import ToolExecutionContext
+from learn_hermes_agent.agent.tool_context import (
+    ToolExecutionContext,
+    get_current_tool_execution_context,
+)
 
 _STATIC_SENSITIVE_ENV_NAMES = {
     "OPENAI_API_KEY",
@@ -324,10 +327,14 @@ def terminal_tool(
             "terminal timeout must be an integer "
             "between 1 and 600"
         )
+    # model_tools 已经绑定了 effective context，这里直接读取即可，不要重新创建 context，也不要再次读取 runtime cwd store
+    # 这样 terminal 的默认目录和相对 workdir 都基于当前 session cwd
+    context = get_current_tool_execution_context()
 
     try:
         workdir = _resolve_workdir(
-            arguments.get("workdir")
+            arguments.get("workdir"),
+            context,
         )
     except ValueError as exc:
         return _error_result(str(exc))
