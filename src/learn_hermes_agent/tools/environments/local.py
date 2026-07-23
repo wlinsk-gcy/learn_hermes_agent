@@ -984,6 +984,45 @@ class LocalEnvironment:
 
         return False
 
+    def _promote_snapshot_candidate(
+            self,
+            candidate: Path,
+            sensitive_env_names: set[str],
+    ) -> bool:
+        """原子提交候选快照"""
+        if not candidate.is_file():
+            return False
+
+        if self._candidate_contains_sensitive_name(
+                candidate,
+                sensitive_env_names,
+        ):
+            self._remove_file(candidate)
+            logger.warning(
+                "Refused terminal snapshot containing "
+                "a sensitive environment variable"
+            )
+            return False
+
+        try:
+            candidate.chmod(0o600) # 尽量限制为当前用户读写
+            # 原子替换正式快照
+            os.replace(
+                candidate,
+                self._snapshot_path,
+            )
+        except OSError as exc:
+            logger.warning(
+                "Could not publish terminal snapshot: %s",
+                exc,
+            )
+            # 敏感或失败候选会被删除
+            # 提交失败时旧正式快照不会被主动删除
+            self._remove_file(candidate)
+            return False
+        # 返回值告诉调用者本次是否成功发布
+        return True
+
     def execute(
             self,
             command: str,
