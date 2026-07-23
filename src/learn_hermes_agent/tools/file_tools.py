@@ -222,8 +222,9 @@ def read_file(arguments: dict[str, Any]) -> dict[str, object]:
     offset = _normalize_int(arguments.get("offset"), name="offset", default=1, minimum=1, maximum=1_000_000)
     limit = _normalize_int(arguments.get("limit"), name="limit", default=DEFAULT_READ_LIMIT, minimum=1,
                            maximum=MAX_READ_LIMIT)
-
-    context = create_tool_execution_context(load_config())
+    # dispatch 调用时，四个文件工具使用相同的 session cwd 和 workspace boundary；
+    # 直接调用时仍由 helper 创建兼容 context。不要修改后面的 check_read_path() / check_write_path()。
+    context = _get_file_tool_context()
     decision = check_read_path(path, context)
     if not decision.allowed:
         payload = decision.to_dict()
@@ -299,9 +300,9 @@ def write_file(arguments: dict[str, Any]) -> dict[str, object]:
     if not isinstance(content, str):
         raise ValueError("write_file requires a string argument: content")
 
-    # model_tools 以后会在 dispatch 前做统一 preflight，但 handler 内部仍然再调用一次 check_write_path()，
-    # 避免有人绕过 handle_function_call() 直接调用 handler 时写入敏感路径。
-    context = create_tool_execution_context(load_config())
+    # dispatch 调用时，四个文件工具使用相同的 session cwd 和 workspace boundary；
+    # 直接调用时仍由 helper 创建兼容 context。不要修改后面的 check_read_path() / check_write_path()。
+    context = _get_file_tool_context()
     decision = check_write_path(path, context)
     if not decision.allowed:
         payload = decision.to_dict()
@@ -351,7 +352,9 @@ def patch(arguments: dict[str, Any]) -> dict[str, object]:
     if old_string == "":
         raise ValueError("patch requires a non-empty old_string")
 
-    context = create_tool_execution_context(load_config())
+    # dispatch 调用时，四个文件工具使用相同的 session cwd 和 workspace boundary；
+    # 直接调用时仍由 helper 创建兼容 context。不要修改后面的 check_read_path() / check_write_path()。
+    context = _get_file_tool_context()
     decision = check_write_path(path, context)
     if not decision.allowed:
         payload = decision.to_dict()
@@ -449,7 +452,9 @@ def search_files(arguments: dict[str, Any]) -> dict[str, object]:
             "path": path,
         }
 
-    context = create_tool_execution_context(load_config())
+    # dispatch 调用时，四个文件工具使用相同的 session cwd 和 workspace boundary；
+    # 直接调用时仍由 helper 创建兼容 context。不要修改后面的 check_read_path() / check_write_path()。
+    context = _get_file_tool_context()
     decision = check_read_path(path, context)
     if not decision.allowed:
         payload = decision.to_dict()
