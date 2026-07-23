@@ -5,10 +5,12 @@ import re
 import logging
 import ntpath
 import os
+import shlex # 把快照路径安全地嵌入 Bash 命令
 import shutil
 from uuid import uuid4
 import signal
 import subprocess
+import tempfile # 获取系统临时目录，快照不会写入项目 workspace
 from pathlib import Path
 import codecs
 import threading
