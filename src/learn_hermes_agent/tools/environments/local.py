@@ -1432,6 +1432,8 @@ class LocalEnvironment:
                 )
         except BaseException:
             self._kill_process_tree(proc)
+            # 如果 Python 收到 KeyboardInterrupt、SystemExit 等异常，不能留下尚未校验和提交的候选快照
+            self._remove_file(candidate_path)
             raise
 
         if timed_out:
