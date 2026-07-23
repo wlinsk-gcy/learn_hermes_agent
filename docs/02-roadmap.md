@@ -10,11 +10,11 @@
 2. 我们复刻哪些接口和行为？
 3. 如何不用大规模测试也能观察它是正确的？
 
-当前进度截至 2026-07-22：
+当前进度截至 2026-07-23：
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
-- Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4 已完成。
-- Phase 10 Batch 5 Minimal Checkpoint 已完成；下一步是 Batch 6 Local Foreground Terminal 的源码对齐和独立设计。
+- Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
+- F1A Session Identity / Persistent CWD 已完成；下一步是 F1B Persistent Environment Snapshot 的 Hermes 源码重新对齐和独立设计。
 
 ## Phase 0：项目基础与约定
 
@@ -310,14 +310,19 @@
   - approval preflight 继续先于 handler 和 checkpoint；hardline 不能被 `auto` 或 `yolo` 绕过。
   - workspace 内 destructive terminal 在执行前创建 best-effort checkpoint；workspace 外命令不创建学习项目 checkpoint。
   - 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。
+- F1A：Session Identity / Persistent CWD：
+  - `ToolExecutionContext.runtime_key` 优先使用稳定 `session_id`，并通过 `ContextVar` 将 effective context 绑定到当前 dispatch。
+  - 新增线程安全的进程内 session cwd record；每次 dispatch 在 preflight、callback 和 handler 前解析同一个 effective cwd。
+  - `LocalEnvironment` 使用随机 marker 回报命令结束 cwd，保留原退出码，并在 timeout 时拒绝 cwd 更新。
+  - terminal、四个 file handler 和 destructive terminal checkpoint 使用同一个 session cwd；terminal 可离开 workspace，但 file tools 仍受 `workspace_root` 阻断。
+  - `/new` 清理旧 session cwd；compression continuation 先继承 cwd，再清理父 session key。
 
 已确认的下一步顺序：
 
-1. F1A Session Identity / Persistent CWD：稳定 session key、dispatch context 绑定、跨调用 cwd、terminal/file/checkpoint cwd 一致性。
-2. F1B Persistent Environment Snapshot：复刻命令前 source、命令后原子更新 export snapshot；仍不加入 background/process 或 PTY。
-3. Provider 方向：F1 完成后重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
+1. F1B Persistent Environment Snapshot：先重新对齐最新版 Hermes，再设计命令前 source、命令后原子更新 export snapshot；仍不加入 background/process 或 PTY。
+2. Provider 方向：F1B 完成后重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
 
-F1A 设计与计划见：
+F1 总体设计与已完成的 F1A 计划见：
 
 - `docs/plans/2026-07-22-f1-session-runtime-context-design.md`
 - `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`
@@ -325,7 +330,7 @@ F1A 设计与计划见：
 暂未实现：
 
 - checkpoint CLI、rollback UX、diff、全局容量限制、自动维护和 legacy migration。
-- approval UI、background/process、PTY、跨调用 cwd/env 和远程执行 backend。
+- approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复和远程执行 backend。
 - 并发工具执行、middleware、guardrails。
 - Hermes 完整 registry 动态能力和完整 search/patch 高级模式。
 
@@ -342,6 +347,8 @@ F1A 设计与计划见：
 - Agent 只能执行当前 Provider 请求实际暴露的工具；非法模型参数会形成配对的结构化 tool error。
 - terminal 只暴露 `command`、`timeout`、`workdir`，安全命令可执行，timeout 返回 124 且清理进程树。
 - hardline 命令继续优先于 yolo/auto 被阻断；被阻断或待审批命令不执行 handler 或 checkpoint callback。
+- 同一 session 的 terminal `cd` 会影响后续 terminal 和相对 file tool；不同 session 互不影响。
+- timeout、无效 marker 或无效目录不更新 session cwd；workspace 外相对 file tool 仍被阻断。
 
 ## Phase 11：Gateway
 

@@ -43,7 +43,7 @@
 
 ## 当前状态
 
-截至 2026-07-22：
+截至 2026-07-23：
 
 - 已重新分析最新版 Hermes 源码及 Registry / ToolExecutor 承重链路。
 - 已建立中文路线图和 session 交接文档。
@@ -55,6 +55,7 @@
 - Phase 10 Batch 4 Minimal ToolExecutor 已完成：已建立 Provider definitions 范围快照和模块级顺序执行器。
 - Phase 10 Batch 5 Minimal Checkpoint 已完成：配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期和安全 preflight 后的自动写前 checkpoint 已实现。
 - Phase 10 Batch 6 Local Foreground Terminal 已完成：本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint 已实现。
-- checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发或 segmented ToolExecutor 尚未实现。
+- F1A Session Identity / Persistent CWD 已完成：稳定 session runtime key、dispatch context 绑定、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 `/new` 和 compression continuation 生命周期已接入。
+- checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、并发或 segmented ToolExecutor 尚未实现。
 
-已重新对齐最新版 Hermes，并确认后续路线：先执行 F1 Session Runtime Context，再进入 Provider 方向。F1 拆为 F1A Session Identity / Persistent CWD 和 F1B Persistent Environment Snapshot；当前先执行 F1A，不实现 approval UI、background/process、PTY、remote backend 或 Provider 代码。
+已重新对齐最新版 Hermes，并确认后续路线：F1A Session Identity / Persistent CWD 已完成；下一步先重新对齐 Hermes 的 environment snapshot 链路并独立设计 F1B Persistent Environment Snapshot。F1B 完成后再重新分析 Provider 方向；当前不实现 approval UI、background/process、PTY、remote backend 或 Provider 代码。

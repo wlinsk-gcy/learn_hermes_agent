@@ -68,7 +68,7 @@ CLI / Gateway / ACP / TUI
 
 ## 当前实现进度
 
-截至 2026-07-22，学习项目已经完成：
+截至 2026-07-23，学习项目已经完成：
 
 - Phase 0 至 Phase 8 的最小可运行版本。
 - Phase 9：最小 Provider Runtime、OpenAI-compatible provider、规范化 response 和 fallback chain。
@@ -78,6 +78,7 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 4：Minimal ToolExecutor，增加来自实际 Provider definitions 的 `valid_tool_names`，并由模块级顺序执行器负责模型工具范围检查、参数解析和 tool result 追加。
 - Phase 10 Batch 5：Minimal Checkpoint，包括默认关闭的配置、共享 shadow Git store、per-workspace ref/index、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的 `write_file` / `patch` 自动写前 checkpoint。
 - Phase 10 Batch 6：Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、ANSI 清理、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint。
+- F1A：Session Identity / Persistent CWD，包括稳定 session runtime key、dispatch effective context 绑定、线程安全的进程内 cwd record、命令结束 cwd marker、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
 
 Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
@@ -88,9 +89,9 @@ ToolRegistry v2
   -> Local Foreground Terminal
 ```
 
-`model_tools.py` 继续负责 Registry dispatch、安全 preflight 和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令；approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
+`model_tools.py` 继续负责 Registry dispatch、安全 preflight、effective context 解析和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令，并已支持同一进程、同一 session 内的跨调用 cwd；approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。2026-07-22 已重新分析最新版 Hermes，并确认后续顺序为 F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot、Provider 扩展。当前不开始 approval UI、background/process、PTY、remote backend 或 Provider 代码。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A 已对齐最新版 Hermes 的 session cwd、local environment、terminal 和 file path resolution 设计意图。下一步先重新分析并设计 F1B Persistent Environment Snapshot；F1B 完成后才进入 Provider 扩展。当前不开始 approval UI、background/process、PTY、remote backend 或 Provider 代码。
 
 ## 文档地图
 

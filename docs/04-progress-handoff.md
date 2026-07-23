@@ -2,7 +2,7 @@
 
 ## 当前日期
 
-2026-07-22
+2026-07-23
 
 ## 当前状态
 
@@ -96,12 +96,13 @@
 - Phase 10 Batch 4：已完成 Minimal ToolExecutor，包括 Provider definitions 范围快照、模型参数解析、顺序执行和 tool result 追加。
 - Phase 10 Batch 5：已完成 Minimal Checkpoint，包括配置、共享 shadow Git store、快照/去重/列举/裁剪、Manager 级恢复、`AIAgent` iteration 生命周期，以及安全 preflight 后的自动写前 checkpoint。
 - Phase 10 Batch 6：已完成 Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal 注册和 workspace 内 destructive terminal checkpoint。
+- F1A：已完成 Session Identity / Persistent CWD，包括稳定 session key、dispatch effective context、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
 
 尚未完成：
 
 - 尚未实现 Anthropic、Gemini、Codex Responses、streaming 和完整 provider runtime 状态机。
 - 尚未实现 `skill_manage`、自动记忆和完整 system prompt cache invalidation。
-- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 cwd/env、远程 backend、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
+- 尚未实现 checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨调用 env、跨进程 cwd 恢复、远程 backend、并发或 segmented ToolExecutor、gateway、plugins、ACP/TUI 或 Cron。
 - 尚未实现 `config set`、`config edit` 等配置写入命令。
 
 ## 已确认的关键设计结论
@@ -2109,6 +2110,74 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 ### 下一步
 
 使用 `superpowers:executing-plans` 执行 `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`，从 Task 1 开始，每次只给一个小任务代码片段。F1A 完成后单独设计 F1B；F1 完成后再重新分析并设计 Provider 扩展。
+
+## 2026-07-23 F1A Session Identity / Persistent CWD 已完成
+
+### 本次目标
+
+完成 F1A 的进程内 session cwd 闭环，使 terminal、file tools、checkpoint 和 CLI session 生命周期共享同一个稳定运行态目录，同时不提前实现 environment snapshot、background/process、PTY、remote backend 或 Provider 扩展。
+
+### 已完成
+
+- `ToolExecutionContext.runtime_key` 现在优先使用 `session_id`，没有 session 时才回退到 `task_id` 或 `"default"`。
+- 使用 `ContextVar` 和 context manager 绑定当前 dispatch 的 effective context；preflight、`before_dispatch` 和 handler 使用同一个 context。
+- 新增线程安全的进程内 session cwd store，支持 record/get/clear/copy，并通过 frozen dataclass `replace()` 生成带 recorded cwd 的新 context。
+- `LocalEnvironment` 为每次命令生成随机 cwd marker，保留原退出码，解析并清理内部 marker，转换 Windows/MSYS drive path，并只接受真实目录。
+- Windows timeout 后 Bash wrapper 仍可能输出 marker；`LocalEnvironment` 使用真实 `timed_out` 状态强制拒绝 cwd 更新。
+- terminal 默认和相对 `workdir` 使用 bound context cwd；命令完成后将有效 cwd 记录到当前 session，公开结果仍只有 `output`、`exit_code` 和 `error`。
+- `read_file`、`write_file`、`patch`、`search_files` 优先复用 bound context；只有直接调用 handler 时才创建兼容 context。
+- destructive terminal checkpoint 的默认目录和相对 `workdir` 统一改为 `tool_context.cwd`。
+- `/new` 在切换前清理旧 session cwd；compression continuation 先复制父 session cwd，再清理父 key。
+- terminal 可以离开 workspace，但后续相对 file tool 仍由原 `workspace_root` 产生 `outside_workspace` 阻断。
+
+### 修改文件
+
+- `src/learn_hermes_agent/agent/tool_context.py`
+- `src/learn_hermes_agent/agent/runtime_cwd.py`
+- `src/learn_hermes_agent/model_tools.py`
+- `src/learn_hermes_agent/tools/environments/local.py`
+- `src/learn_hermes_agent/tools/terminal_tool.py`
+- `src/learn_hermes_agent/tools/file_tools.py`
+- `src/learn_hermes_agent/agent/tool_executor.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `AGENTS.md`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+
+### 对照的 Hermes 源码
+
+- `agent/runtime_cwd.py`
+- `gateway/session_context.py`
+- `tools/terminal_tool.py`
+- `tools/environments/base.py`
+- `tools/environments/local.py`
+- `tools/file_tools.py`
+- `acp_adapter/session.py`
+
+### 验证方式
+
+- `python -m compileall -q src` 退出码为 0。
+- 双 session 全链路脚本通过 `handle_function_call()` 验证 A/B cwd 隔离、A 的 `cd child` 持续生效、B 保持初始 cwd。
+- terminal 和 file tools 使用同一个 cwd；随机 cwd marker 不出现在公开 output。
+- terminal 离开 workspace 后，相对 `read_file` 被 `outside_workspace` 阻断。
+- 非零退出命令仍可记录已完成的 cwd；timeout 返回 124 且不更新 cwd。
+- `/new` 清理旧 key，compression child 继承父 cwd，同一 `session_id` 在不同 `task_id` 间保持 cwd。
+- `doctor`、`tools`、echo CLI、真实 terminal CLI 和 `chat --tool-demo --show-messages` 回归通过。
+- `git diff --check` 通过；`git status --short` 仅显示未跟踪的 `sandbox/`，本轮未处理。
+
+### 设计结论
+
+- interactive CLI 每轮都会创建新的 `task_id`，因此 session cwd 的稳定主键必须优先使用 `session_id`。
+- session cwd 的单一入口是 dispatch 解析后的 effective context；handler 不应各自读取 runtime store。
+- cwd marker 和 environment snapshot 是两个独立机制；F1A 只持久化目录，不持久化 `export`。
+- F1A cwd 只在当前 Python 进程内持续，不修改 SessionStore schema，也不提供跨进程恢复。
+- timeout 是否更新 cwd 必须依赖真实 timeout 状态，不能依赖 marker 是否出现或退出码约定。
+- workspace cwd 与 workspace safety boundary 是不同概念：terminal 可以离开边界，file tools 不能因此扩大权限。
+
+### 下一步
+
+先重新分析最新版 Hermes 的 environment snapshot、shell bootstrap、原子 snapshot 更新和 session 隔离实现，形成 F1B Persistent Environment Snapshot 的独立设计与实施计划。F1B 完成后再重新分析 Provider streaming、Anthropic、Gemini、Codex Responses 和 credential/failover；当前不开始 Provider 代码。
 
 ## 后续进度模板
 
