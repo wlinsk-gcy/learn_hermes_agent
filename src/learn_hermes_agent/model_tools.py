@@ -12,6 +12,7 @@ from learn_hermes_agent.agent.tool_context import (
 )
 from learn_hermes_agent.tools.approval import check_command_approval
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
+from learn_hermes_agent.agent.runtime_cwd import resolve_tool_execution_context
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +46,16 @@ def handle_function_call(
     target = registry or get_default_registry()
     entry = target.get(name)
     arguments = _parse_arguments(arguments_json)
+    # 解析当前 session 的有效 context
+    execution_context = resolve_tool_execution_context(context)
 
-    preflight_error = _preflight_tool_call(name, arguments, context)
+    preflight_error = _preflight_tool_call(name, arguments, execution_context)
     if preflight_error is not None:
         return json.dumps(preflight_error, ensure_ascii=False)
 
     if before_dispatch is not None:
         try:
-            before_dispatch(name, arguments, context)
+            before_dispatch(name, arguments, execution_context)
         except Exception as exc:
             logger.debug(
                 (
@@ -62,7 +65,7 @@ def handle_function_call(
                 exc,
                 exc_info=True)
 
-    with bind_tool_execution_context(context):
+    with bind_tool_execution_context(execution_context):
         result = entry.handler(arguments)
     return json.dumps(result, ensure_ascii=False)
 
