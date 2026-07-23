@@ -27,6 +27,9 @@ from learn_hermes_agent.providers.runtime import build_provider_transport
 from learn_hermes_agent.state.session_db import SessionStore
 from learn_hermes_agent.agent.memory_store import MemoryStore
 from learn_hermes_agent.agent.skills import SkillLibrary
+from learn_hermes_agent.agent.runtime_cwd import (
+    clear_session_cwd,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -353,10 +356,22 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                 return 0
 
             if command.name == "new":
+                # 这里只清理旧 session key，不清理新 key，也不修改 SessionStore schema。
                 title = command_args or "interactive chat"
                 system_prompt = build_system_prompt()
-                session_id = store.create_session(title=title, system_prompt=system_prompt)
-                agent = build_agent(config, tool_demo=tool_demo)
+
+                new_session_id = store.create_session(
+                    title=title,
+                    system_prompt=system_prompt,
+                )
+
+                clear_session_cwd(session_id)
+                session_id = new_session_id
+
+                agent = build_agent(
+                    config,
+                    tool_demo=tool_demo,
+                )
                 history = []
                 print(f"session_id: {session_id}")
                 continue
