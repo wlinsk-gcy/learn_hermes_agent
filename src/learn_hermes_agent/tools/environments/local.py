@@ -1139,6 +1139,37 @@ class LocalEnvironment:
             else -1
         )
 
+    def _build_bootstrap_script(
+            self,
+            candidate: Path,
+            sensitive_env_names: set[str],
+    ) -> str:
+        """构造 bootstrap 基础脚本"""
+        quoted_candidate = _quote_bash_path(
+            candidate
+        )
+        quoted_cwd = _quote_bash_path(
+            self.cwd
+        )
+
+        parts = [
+            "set +e",
+            "umask 077",
+            (
+                f"builtin cd -- {quoted_cwd} "
+                "|| exit 126"
+            ),
+            *_snapshot_unset_script(
+                sensitive_env_names
+            ),
+            (
+                f"export -p > {quoted_candidate} "
+                "|| exit 1"
+            ),
+        ]
+
+        return "\n".join(parts)
+
     def execute(
             self,
             command: str,
