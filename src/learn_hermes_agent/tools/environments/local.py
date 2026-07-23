@@ -1055,7 +1055,7 @@ class LocalEnvironment:
             *,
             cwd: Path,
             env: dict[str, str],
-            login: bool, # login 不是“登录某个账号”，而是“是否把 Bash 启动为 login shell”
+            login: bool,  # login 不是“登录某个账号”，而是“是否把 Bash 启动为 login shell”
     ) -> subprocess.Popen[bytes]:
         """
         统一Bash的启动方法。
@@ -1108,6 +1108,35 @@ class LocalEnvironment:
             env=env,
             start_new_session=not _IS_WINDOWS,
             creationflags=creationflags,
+        )
+
+    def _wait_internal_process(
+            self,
+            proc: subprocess.Popen[bytes],
+            timeout: int,
+    ) -> int:
+        """
+        等待内部 Bash 进程.
+        这是 bootstrap 和 Bash 可用性探测使用的内部等待方法
+        """
+        try:
+            # communicate() 等待进程并排空输出管道，避免管道写满
+            proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # 超时后复用现有 _kill_process_tree()
+            self._kill_process_tree(proc)
+
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
+            # 124 与当前 terminal timeout 退出码保持一致
+            return 124
+        # 它不处理模型输出，因为 bootstrap 输出属于内部实现
+        return (
+            proc.returncode
+            if isinstance(proc.returncode, int)
+            else -1
         )
 
     def execute(
