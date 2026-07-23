@@ -31,6 +31,10 @@ from learn_hermes_agent.agent.runtime_cwd import (
     clear_session_cwd,
     copy_session_cwd,
 )
+from learn_hermes_agent.tools.terminal_tool import (
+    clear_terminal_environment,
+    move_terminal_environment,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
