@@ -119,7 +119,9 @@ def _ensure_checkpoint(
     ):
         return
 
-    execution_cwd = Path.cwd().resolve()
+    # terminal 实际执行、文件工具和 destructive terminal checkpoint 全部以同一个 effective session cwd 为基准。
+    # 显式相对 workdir 也应相对于 session cwd，而不是 Python 进程 cwd。
+    execution_cwd = tool_context.cwd.resolve()
     raw_workdir = function_args.get("workdir")
 
     if raw_workdir is None or raw_workdir == "":
