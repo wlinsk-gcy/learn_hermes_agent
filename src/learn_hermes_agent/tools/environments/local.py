@@ -121,6 +121,22 @@ def _snapshot_sensitive_env_names(
     )
 
 
+def _snapshot_unset_script(
+        sensitive_env_names: set[str],
+) -> list[str]:
+    """生成安全的 unset 命令"""
+    # 返回 list[str]：后续可以直接用 parts.extend(...) 插入命令包装器
+    return [
+        # unset -- NAME：删除变量，-- 表示后面不是命令选项
+        # 2>/dev/null：不把 readonly 等错误写入 terminal 输出
+        # || true：删除失败不能中断用户命令的收尾流程
+        f"unset -- {name} 2>/dev/null || true"
+        for name in _snapshot_sensitive_env_names(
+            sensitive_env_names
+        )
+    ]
+
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
