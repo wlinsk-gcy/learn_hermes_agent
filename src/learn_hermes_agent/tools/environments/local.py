@@ -137,6 +137,34 @@ def _snapshot_unset_script(
     ]
 
 
+def _resolve_shell_init_files() -> list[str]:
+    """解析 Shell 初始化文件"""
+    if _IS_WINDOWS:
+        # Windows 返回空列表，因为 Git Bash login shell 已负责加载 profile，额外 source 容易重复加载并引入路径问题
+        return []
+
+    resolved: list[str] = []
+    # POSIX 下寻找真实存在的 profile 和 bashrc
+    for raw in (
+            "~/.profile",
+            "~/.bash_profile",
+            "~/.bashrc",
+    ):
+        try:
+            # 展开 ~ 和环境变量
+            path = os.path.expandvars(
+                os.path.expanduser(raw)
+            )
+        except Exception:
+            # 忽略不存在或无法解析的文件，不能让缺失配置阻止 terminal
+            continue
+
+        if path and os.path.isfile(path):
+            resolved.append(path)
+
+    return resolved
+
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
