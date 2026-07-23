@@ -29,6 +29,7 @@ from learn_hermes_agent.agent.memory_store import MemoryStore
 from learn_hermes_agent.agent.skills import SkillLibrary
 from learn_hermes_agent.agent.runtime_cwd import (
     clear_session_cwd,
+    copy_session_cwd,
 )
 
 
@@ -416,6 +417,13 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                 system_prompt=system_prompt,
                 parent_session_id=old_session_id,
             )
+            # 先复制再清理，顺序不能乱，这样 continuation 继承原工作目录，同时旧 session key 不继续占用内存。
+            copy_session_cwd(
+                old_session_id,
+                session_id,
+            )
+            clear_session_cwd(old_session_id)
+
             store.append_messages(session_id, messages)
             new_messages = messages
             print(f"session_id: {session_id}")
