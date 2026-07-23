@@ -26,6 +26,7 @@ class ToolExecutionContext:
         """session_id 必须优先，因为 interactive CLI 每轮都会创建新 task_id，但同一会话的 session_id 不变"""
         return self.session_id or self.task_id or "default"
 
+
 # _CURRENT_TOOL_CONTEXT 用来让工具 handler 知道“当前这次工具调用属于哪个 session、在哪个 cwd、使用什么审批配置”。临时保存“当前正在执行的 context”。
 # ContextVar 避免未来并发 session 共用普通全局变量
 _CURRENT_TOOL_CONTEXT: ContextVar[
@@ -73,7 +74,14 @@ threading.local() 主要按线程隔离。
 ContextVar 不仅能区分线程，也能区分同一线程中的不同异步任务，更适合未来的 Gateway、ACP 和并发工具调用。
 """
 
+"""
+@contextmanager 会把：
+- yield 前面的代码作为 with 入口。
+- yield 所在位置交给 with 内部代码执行。
+- finally 作为 with 退出清理。
 
+这里 reset(token) 恢复的是进入前的旧 context，不一定是 None，所以嵌套调用也能正确恢复外层 context。
+"""
 @contextmanager
 def bind_tool_execution_context(
         context: ToolExecutionContext | None,

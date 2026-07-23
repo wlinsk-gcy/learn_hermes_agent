@@ -6,7 +6,10 @@ from collections.abc import Callable
 from typing import Any
 
 from learn_hermes_agent.agent.file_safety import check_read_path, check_write_path
-from learn_hermes_agent.agent.tool_context import ToolExecutionContext
+from learn_hermes_agent.agent.tool_context import (
+    ToolExecutionContext,
+    bind_tool_execution_context,
+)
 from learn_hermes_agent.tools.approval import check_command_approval
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 
@@ -59,7 +62,8 @@ def handle_function_call(
                 exc,
                 exc_info=True)
 
-    result = entry.handler(arguments)
+    with bind_tool_execution_context(context):
+        result = entry.handler(arguments)
     return json.dumps(result, ensure_ascii=False)
 
 
