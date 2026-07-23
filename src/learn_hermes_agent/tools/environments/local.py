@@ -93,6 +93,34 @@ def _quote_bash_path(path: str | Path) -> str:
     )
 
 
+_ENV_NAME_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*$"
+)
+
+
+def _snapshot_sensitive_env_names(
+        sensitive_env_names: set[str],
+) -> tuple[str, ...]:
+    """
+    合并 Provider 密钥变量与当前已有的虚拟环境变量过滤规则.
+    删除 bad-name、A; rm ... 等非法名称，防止后续拼入 Shell 命令时形成注入
+    排序后输出稳定，便于观察和复现
+    """
+    names = set(sensitive_env_names)
+    names.update({
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+    })
+
+    return tuple(
+        sorted(
+            name
+            for name in names
+            if _ENV_NAME_RE.fullmatch(name)
+        )
+    )
+
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
