@@ -77,6 +77,22 @@ def _windows_to_msys_path(path: str) -> str:
     )
 
 
+def _bash_safe_path(path: str) -> str:
+    """转换 Windows 路径并清理残留反斜杠"""
+    if not _IS_WINDOWS or not path:
+        return path
+
+    converted = _windows_to_msys_path(path)
+    return converted.replace("\\", "/")
+
+
+def _quote_bash_path(path: str | Path) -> str:
+    """处理空格、单引号等 Shell 特殊字符，防止路径被拆成多个参数"""
+    return shlex.quote(
+        _bash_safe_path(str(path))
+    )
+
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
