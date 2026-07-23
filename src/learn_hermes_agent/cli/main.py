@@ -423,11 +423,19 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                 system_prompt=system_prompt,
                 parent_session_id=old_session_id,
             )
+            # environment 使用移动而不是复制，cwd 使用复制后删除，最终两类状态都只归 child key 所有
+            # 旧 terminal environment 整体迁移给 child
+            move_terminal_environment(
+                old_session_id,
+                session_id,
+            )
             # 先复制再清理，顺序不能乱，这样 continuation 继承原工作目录，同时旧 session key 不继续占用内存。
+            # cwd 值复制给 child
             copy_session_cwd(
                 old_session_id,
                 session_id,
             )
+            # 删除 parent cwd 记录
             clear_session_cwd(old_session_id)
 
             store.append_messages(session_id, messages)
