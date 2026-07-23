@@ -1049,6 +1049,67 @@ class LocalEnvironment:
 
         self._snapshot_ready = False
 
+    def _run_bash(
+            self,
+            command: str,
+            *,
+            cwd: Path,
+            env: dict[str, str],
+            login: bool, # login 不是“登录某个账号”，而是“是否把 Bash 启动为 login shell”
+    ) -> subprocess.Popen[bytes]:
+        """
+        统一Bash的启动方法。
+        login=True 第一次创建环境时，需要用 login shell 捕获完整初始环境
+        之后执行普通命令时：login=False
+        此时不再重复加载登录配置，而是 source 已保存的快照；
+        所以这里的 login 可以理解为：
+        True  = 初始化用户 Shell 环境
+        False = 快速执行普通命令
+        """
+        if login:
+            # login=True：执行 bootstrap，使用 bash -l -c
+
+            command = _prepend_shell_init(
+                command,
+                _resolve_shell_init_files(),
+            )
+            # bash -l -c "命令"
+            # -l 会让 Bash 按登录 Shell 的方式加载用户启动配置，例如：/etc/profile  ~/.bash_profile
+            # 因此能够获得用户平时配置的：PATH等
+            args = [
+                self.bash_path,
+                "-l",
+                "-c",
+                command,
+            ]
+        else:
+            # login=False：执行普通命令，使用 bash -c
+            args = [
+                self.bash_path,
+                "-c",
+                command,
+            ]
+
+        creationflags = _windows_hide_flags()
+
+        if _IS_WINDOWS:
+            creationflags |= getattr(
+                subprocess,
+                "CREATE_NEW_PROCESS_GROUP",
+                0,
+            )
+
+        return subprocess.Popen(
+            args,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=str(cwd),
+            env=env,
+            start_new_session=not _IS_WINDOWS,
+            creationflags=creationflags,
+        )
+
     def execute(
             self,
             command: str,
