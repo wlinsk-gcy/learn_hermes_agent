@@ -710,6 +710,10 @@ class LocalEnvironment:
             sensitive_env_names
         )
         collector = _BoundedOutputCollector(max_output_chars)
+        # 对命令进行包装
+        wrapped_command, cwd_marker = (
+            _wrap_command_with_cwd_marker(command)
+        )
 
         creationflags = _windows_hide_flags()
         if _IS_WINDOWS:
@@ -718,9 +722,9 @@ class LocalEnvironment:
                 "CREATE_NEW_PROCESS_GROUP",
                 0,
             )
-
+        # 执行包装后的命令
         proc = subprocess.Popen(
-            [self.bash_path, "-c", command],
+            [self.bash_path, "-c", wrapped_command],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -787,18 +791,27 @@ class LocalEnvironment:
             )
 
         output = collector.render(suffix=suffix)
+        output, resolved_cwd = _extract_cwd_from_output(
+            output,
+            cwd_marker,
+        )
         output = _strip_ansi(output)
         output = _redact_known_values(
             output,
             secret_values,
         )
-
+        # 现在 LocalEnvironment.execute() 会真实执行包装后的命令，但对调用方仍保留原始输出和退出码，同时额外提供内部 cwd
         return {
             "output": output,
             "returncode": (
                 returncode
                 if isinstance(returncode, int)
                 else -1
+            ),
+            "cwd": (
+                str(resolved_cwd)
+                if resolved_cwd is not None
+                else None
             ),
         }
 
