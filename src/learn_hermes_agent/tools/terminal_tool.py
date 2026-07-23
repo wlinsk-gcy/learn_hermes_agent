@@ -44,6 +44,33 @@ _creation_locks: dict[
 # 保护创建锁映射自身
 _creation_locks_lock = threading.Lock()
 
+
+def _get_creation_lock(
+        runtime_key: str,
+) -> threading.Lock:
+    """
+    获取按 key 创建锁
+    效果：
+
+    session-a 多次获取 → 同一个 Lock
+    session-b 获取     → 另一个 Lock
+
+    _creation_locks_lock 只保护“查找或创建 Lock”这个短操作，不包围耗时的 login bootstrap。
+    """
+    with _creation_locks_lock:
+        lock = _creation_locks.get(
+            runtime_key
+        )
+
+        if lock is None:
+            lock = threading.Lock()
+            _creation_locks[
+                runtime_key
+            ] = lock
+
+        return lock
+
+
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
 # - nohup：忽略挂断信号，常用于让程序持续运行。
 # - disown：把任务从当前 shell 的任务管理中移除。
