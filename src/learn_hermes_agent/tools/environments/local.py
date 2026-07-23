@@ -890,6 +890,10 @@ class LocalEnvironment:
         self._initial_sensitive_env_names = set(
             sensitive_env_names or ()
         )
+        # 由于 terminal 已先接入缓存，创建出的快照现在始终有长期 environment owner 负责复用和清理
+        self.init_session(
+            self._initial_sensitive_env_names
+        )
 
     def _new_snapshot_candidate(self) -> Path:
         """
