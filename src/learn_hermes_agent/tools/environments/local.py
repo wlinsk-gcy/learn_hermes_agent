@@ -771,6 +771,7 @@ def _wrap_command_with_cwd_marker(
     #  marker：本次调用专用的随机解析边界
     return wrapped_command, marker
 
+
 # 完整运行状态包装器
 def _wrap_command_with_runtime_state(
         command: str,
@@ -1361,9 +1362,30 @@ class LocalEnvironment:
             sensitive_env_names
         )
         collector = _BoundedOutputCollector(max_output_chars)
-        # 对命令进行包装
+        # 使用新的包装器
+        self.cwd = cwd
+
+        snapshot_path = (
+            self._snapshot_path
+            if self._snapshot_ready
+            else None
+        )
+        candidate_path = (
+            self._new_snapshot_candidate()
+            if self._snapshot_ready
+            else None
+        )
+
         wrapped_command, cwd_marker = (
-            _wrap_command_with_cwd_marker(command)
+            _wrap_command_with_runtime_state(
+                command,
+                cwd=cwd,
+                snapshot_path=snapshot_path,
+                candidate_path=candidate_path,
+                sensitive_env_names=(
+                    sensitive_env_names
+                ),
+            )
         )
 
         creationflags = _windows_hide_flags()
