@@ -18,6 +18,9 @@ from learn_hermes_agent.agent.tool_context import (
     ToolExecutionContext,
     get_current_tool_execution_context,
 )
+from learn_hermes_agent.agent.runtime_cwd import (
+    record_session_cwd,
+)
 
 _STATIC_SENSITIVE_ENV_NAMES = {
     "OPENAI_API_KEY",
@@ -366,6 +369,18 @@ def terminal_tool(
     except Exception as exc:
         return _error_result(
             f"Terminal command failed: {exc}"
+        )
+    # 不要根据 exit_code == 0 判断。即使命令最终失败，前面的 cd 仍可能已改变 shell cwd；
+    # 只有 timeout 或 marker 缺失时 result_cwd 才是 None，此时不会更新记录
+    result_cwd = result.get("cwd")
+    if (
+            context is not None
+            and isinstance(result_cwd, str)
+            and result_cwd
+    ):
+        record_session_cwd(
+            context.runtime_key,
+            result_cwd,
         )
 
     return {
