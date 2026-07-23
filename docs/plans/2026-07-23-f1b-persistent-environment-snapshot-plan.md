@@ -547,22 +547,12 @@ Task 4 再让 `execute()` 改用该方法，本步骤先只增加方法。
             return False
 ```
 
-**Step 6: 从构造函数启动初始化**
-
-在 Task 2 构造函数的 `_snapshot_timeout` 赋值后增加：
-
-```python
-        self.init_session(
-            self._initial_sensitive_env_names
-        )
-```
-
-**Step 7: 手工验证 bootstrap**
+**Step 6: 手工验证 bootstrap**
 
 Run:
 
 ```powershell
-uv run python -c "from pathlib import Path; from learn_hermes_agent.tools.environments.local import LocalEnvironment, find_bash; e=LocalEnvironment(find_bash(), cwd=Path.cwd(), sensitive_env_names=set()); print(e._snapshot_ready, e._snapshot_path.is_file()); e.cleanup(); print(e._snapshot_path.exists())"
+uv run python -c "from pathlib import Path; from learn_hermes_agent.tools.environments.local import LocalEnvironment, find_bash; e=LocalEnvironment(find_bash(), cwd=Path.cwd(), sensitive_env_names=set()); e.init_session(set()); print(e._snapshot_ready, e._snapshot_path.is_file()); e.cleanup(); print(e._snapshot_path.exists())"
 ```
 
 Expected:
@@ -906,6 +896,18 @@ atexit.register(cleanup_terminal_environments)
 ```
 
 **Step 7: terminal_tool() 改为复用缓存**
+
+在替换 `terminal_tool()` 创建逻辑的同一步，先在 `LocalEnvironment.__init__()`
+末尾加入：
+
+```python
+        self.init_session(
+            self._initial_sensitive_env_names
+        )
+```
+
+该调用必须与 environment cache 同时接入；不能在仍然每次新建 environment 时提前
+启用，否则单次 terminal 调用结束后没有 owner 负责清理已创建的快照。
 
 先只计算一次：
 

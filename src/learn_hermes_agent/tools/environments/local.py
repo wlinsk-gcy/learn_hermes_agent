@@ -771,6 +771,64 @@ def _wrap_command_with_cwd_marker(
     #  marker：本次调用专用的随机解析边界
     return wrapped_command, marker
 
+# 完整运行状态包装器
+def _wrap_command_with_runtime_state(
+        command: str,
+        *,
+        cwd: Path,
+        snapshot_path: Path | None,
+        candidate_path: Path | None,
+        sensitive_env_names: set[str],
+) -> tuple[str, str]:
+    marker = (
+        f"__LEARN_HERMES_CWD_{uuid4().hex}__"
+    )
+    escaped = command.replace(
+        "'",
+        "'\\''",
+    )
+    parts: list[str] = []
+
+    if snapshot_path is not None:
+        quoted_snapshot = _quote_bash_path(
+            snapshot_path
+        )
+        parts.append(
+            f"source {quoted_snapshot} "
+            ">/dev/null 2>&1 || true"
+        )
+
+    parts.append(
+        f"builtin cd -- {_quote_bash_path(cwd)} "
+        "|| exit 126"
+    )
+    parts.append(f"eval '{escaped}'")
+    parts.append("__learn_hermes_ec=$?")
+    parts.append("umask 077")
+
+    if candidate_path is not None:
+        parts.extend(
+            _snapshot_unset_script(
+                sensitive_env_names
+            )
+        )
+        quoted_candidate = _quote_bash_path(
+            candidate_path
+        )
+        parts.append(
+            f"export -p > {quoted_candidate} "
+            f"2>/dev/null || rm -f {quoted_candidate} "
+            "2>/dev/null || true"
+        )
+
+    parts.append(
+        f"printf '\\n{marker}%s{marker}\\n' "
+        '"$(pwd -P)"'
+    )
+    parts.append("exit $__learn_hermes_ec")
+
+    return "\n".join(parts), marker
+
 
 def _extract_cwd_from_output(
         output: str,
