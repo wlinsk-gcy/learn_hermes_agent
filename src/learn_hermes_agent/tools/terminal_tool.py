@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import atexit
+import atexit # Python 标准库，用于注册“程序正常退出时执行的函数”
 import re
 import threading
 from pathlib import Path
@@ -201,6 +201,25 @@ def move_terminal_environment(
             and replaced is not environment
     ):
         replaced.cleanup()
+
+
+def cleanup_terminal_environments() -> None:
+    with _env_lock:
+        # 锁内只复制对象并清空映射
+        environments = tuple(
+            _active_environments.values()
+        )
+        _active_environments.clear()
+    # 文件删除在锁外执行，避免阻塞其他缓存操作
+    for environment in environments:
+        # cleanup() 本身幂等，因此显式清理后再次触发 atexit 也安全
+        environment.cleanup()
+
+# Python 正常退出时自动删除所有正式快照和候选文件
+atexit.register(
+    # 传的是函数对象，所以不能加括号
+    cleanup_terminal_environments
+)
 
 
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
