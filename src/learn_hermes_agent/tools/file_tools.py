@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from learn_hermes_agent.agent.file_safety import check_read_path, check_write_path
-from learn_hermes_agent.agent.tool_context import create_tool_execution_context
+from learn_hermes_agent.agent.tool_context import (
+    ToolExecutionContext,
+    create_tool_execution_context,
+    get_current_tool_execution_context,
+)
 from learn_hermes_agent.config import load_config
 from learn_hermes_agent.tools.registry import ToolEntry, ToolRegistry
 
@@ -135,6 +139,22 @@ SEARCH_FILES_PARAMETERS: dict[str, Any] = {
     "required": ["pattern"],
     "additionalProperties": False,
 }
+
+
+def _get_file_tool_context() -> ToolExecutionContext:
+    """
+    优先复用 dispatch 已绑定的 effective context。
+
+    只有直接调用 file handler、没有 dispatch context 时，
+    才根据当前配置创建兼容 context。
+    """
+    context = get_current_tool_execution_context()
+    if context is not None:
+        return context
+
+    return create_tool_execution_context(
+        load_config()
+    )
 
 
 def _normalize_int(
