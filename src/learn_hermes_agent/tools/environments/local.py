@@ -5,12 +5,12 @@ import re
 import logging
 import ntpath
 import os
-import shlex # 把快照路径安全地嵌入 Bash 命令
+import shlex  # 把快照路径安全地嵌入 Bash 命令
 import shutil
 from uuid import uuid4
 import signal
 import subprocess
-import tempfile # 获取系统临时目录，快照不会写入项目 workspace
+import tempfile  # 获取系统临时目录，快照不会写入项目 workspace
 from pathlib import Path
 import codecs
 import threading
@@ -51,6 +51,30 @@ def _msys_to_windows_path(cwd: str) -> str:
     )
 
     return f"{drive}:{tail or chr(92)}"
+
+
+def _windows_to_msys_path(path: str) -> str:
+    """把 Windows 盘符路径转换成 Git Bash 的 /c/... 形式。供 Python 将快照路径插入 Git Bash 脚本时使用"""
+    if not _IS_WINDOWS or not path:
+        return path
+
+    match = re.match(
+        r"^([a-zA-Z]):[\\/]*(.*)$",
+        path,
+    )
+    if match is None:
+        return path
+
+    drive = match.group(1).lower()
+    tail = (
+            match.group(2) or ""
+    ).replace("\\", "/").lstrip("/")
+
+    return (
+        f"/{drive}/{tail}"
+        if tail
+        else f"/{drive}/"
+    )
 
 
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
