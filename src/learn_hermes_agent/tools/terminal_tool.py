@@ -71,6 +71,61 @@ def _get_creation_lock(
         return lock
 
 
+def _get_or_create_environment(
+        *,
+        runtime_key: str,
+        bash_path: str,
+        cwd: Path,
+        sensitive_env_names: set[str],
+) -> LocalEnvironment:
+    """
+    这里有两次缓存检查：
+
+    第一次：快速返回已有 environment
+    第二次：等待创建锁后，防止重复创建
+
+    构造 LocalEnvironment 时不持有全局 _env_lock，不同 session 可以并行初始化。
+
+    当前构造函数还没有自动 bootstrap；会在缓存接入 terminal 的同一步启用
+    """
+    with _env_lock:
+        environment = _active_environments.get(
+            runtime_key
+        )
+
+    if environment is not None:
+        return environment
+
+    creation_lock = _get_creation_lock(
+        runtime_key
+    )
+
+    with creation_lock:
+        # 等待创建锁期间，其他线程可能已经完成创建
+        with _env_lock:
+            environment = _active_environments.get(
+                runtime_key
+            )
+
+        if environment is not None:
+            return environment
+
+        environment = LocalEnvironment(
+            bash_path,
+            cwd=cwd,
+            sensitive_env_names=(
+                sensitive_env_names
+            ),
+        )
+
+        with _env_lock:
+            _active_environments[
+                runtime_key
+            ] = environment
+
+        return environment
+
+
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
 # - nohup：忽略挂断信号，常用于让程序持续运行。
 # - disown：把任务从当前 shell 的任务管理中移除。
