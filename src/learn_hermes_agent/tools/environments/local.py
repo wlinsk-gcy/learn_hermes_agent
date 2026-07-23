@@ -16,6 +16,39 @@ from collections import deque
 logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = os.name == "nt"
+
+
+def _msys_to_windows_path(cwd: str) -> str:
+    """
+    这里只转换明确带单字母盘符的路径，避免把 /home、/tmp 等普通 POSIX 路径错误转换。
+
+    例如：
+    /c/Users/admin          → C:\\Users\\admin
+    /cygdrive/d/project     → D:\\project
+    /mnt/e/code             → E:\\code
+    /c                      → C:\\
+    C:\\Users\\admin        → 保持不变
+    /home/admin             → 保持不变
+    """
+    if not _IS_WINDOWS or not cwd:
+        return cwd
+
+    match = re.match(
+        r"^/(?:(?:cygdrive|mnt)/)?"
+        r"([a-zA-Z])(/.*)?$",
+        cwd,
+    )
+    if match is None:
+        return cwd
+
+    drive = match.group(1).upper()
+    tail = (match.group(2) or "").replace(
+        "/",
+        "\\",
+    )
+
+    return f"{drive}:{tail or chr(92)}"
+
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
 _ANSI_ESCAPE_RE = re.compile(
