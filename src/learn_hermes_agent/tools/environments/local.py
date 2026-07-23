@@ -1005,7 +1005,7 @@ class LocalEnvironment:
             return False
 
         try:
-            candidate.chmod(0o600) # 尽量限制为当前用户读写
+            candidate.chmod(0o600)  # 尽量限制为当前用户读写
             # 原子替换正式快照
             os.replace(
                 candidate,
@@ -1022,6 +1022,32 @@ class LocalEnvironment:
             return False
         # 返回值告诉调用者本次是否成功发布
         return True
+
+    def cleanup(self) -> None:
+        """
+        实现幂等 cleanup
+
+        只删除当前 environment 自己的:
+        - 正式快照
+        - 以该正式快照名称开头的遗留候选文件
+
+        不会删除其他 session 的快照，也不删除共享临时目录。重复调用 cleanup() 仍然安全
+        """
+        self._remove_file(self._snapshot_path)
+
+        try:
+            candidates = tuple(
+                self._snapshot_dir.glob(
+                    f"{self._snapshot_path.name}.tmp.*"
+                )
+            )
+        except OSError:
+            candidates = ()
+
+        for candidate in candidates:
+            self._remove_file(candidate)
+
+        self._snapshot_ready = False
 
     def execute(
             self,
