@@ -1166,6 +1166,27 @@ class LocalEnvironment:
                 f"export -p > {quoted_candidate} "
                 "|| exit 1"
             ),
+            (
+                "__learn_hermes_fns=$(declare -F "
+                "| awk '{print $3}' "
+                "| grep -vE '^_[^_]') || true"
+            ),
+            (
+                # 名称列表为空时不能执行裸 declare -f，否则它会输出全部函数
+                '[ -n "$__learn_hermes_fns" ] '
+                "&& declare -f $__learn_hermes_fns "
+                f">> {quoted_candidate} 2>/dev/null "
+                "|| true"
+            ),
+            f"alias -p >> {quoted_candidate}",
+            (
+                # expand_aliases 允许非交互 Bash 使用 alias
+                "echo 'shopt -s expand_aliases' "
+                f">> {quoted_candidate}"
+            ),
+            # set +e、set +u 防止下次 source 后意外启用严格退出行为
+            f"echo 'set +e' >> {quoted_candidate}",
+            f"echo 'set +u' >> {quoted_candidate}",
         ]
 
         return "\n".join(parts)
