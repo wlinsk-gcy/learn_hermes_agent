@@ -6,6 +6,7 @@ import logging
 import ntpath
 import os
 import shutil
+from uuid import uuid4
 import signal
 import subprocess
 from pathlib import Path
@@ -48,6 +49,7 @@ def _msys_to_windows_path(cwd: str) -> str:
     )
 
     return f"{drive}:{tail or chr(92)}"
+
 
 # 识别 terminal 输出中的常见 ANSI 控制序列，例如颜色、加粗和光标控制
 # 把面向真实终端的颜色和光标指令删除，只把干净文本返回给 LLM
@@ -571,6 +573,55 @@ def _build_subprocess_env(
             )
         ),
     )
+
+
+def _wrap_command_with_cwd_marker(
+        command: str,
+) -> tuple[str, str]:
+    r"""
+    这个函数的目的是：让 Python 知道 Bash 命令执行结束后，shell 当前位于哪个目录。
+    当前每次 terminal 调用都会创建新的 Bash 子进程：
+    Python cwd = D:\project
+
+    Bash 执行：cd src
+    Bash cwd = D:\project\src
+
+    Bash 退出
+    Python cwd 仍然是 D:\project
+
+    如果不获取 Bash 最后的 cwd，下一次 terminal 调用就无法继续从 src 运行。
+
+    例如原命令：
+    cd src
+    包装后语义为：
+    cd src
+    __learn_hermes_ec=$?
+    printf '\n<随机marker>%s<随机marker>\n' "$(pwd -P)"
+    exit $__learn_hermes_ec
+    """
+    # 随机 marker 用于准确区分：用户命令正常输出 和  Hermes 内部附加的 cwd 信息
+    # 后续解析器会删除 marker，不让它出现在返回给 LLM 的 output 中，并把其中的目录记录到 session：
+    # 第一次：terminal("cd src") 然后 记录 session cwd = D:\project\src
+    # 第二次：terminal("pwd") 默认从 D:\project\src 启动
+    # 它只解决 cwd 持久化，不负责 export VAR=value 的跨调用保存；
+    marker = (
+        f"__LEARN_HERMES_CWD_{uuid4().hex}__"
+    )
+
+    wrapped_command = "\n".join(
+        (
+            command,
+            "__learn_hermes_ec=$?",  # 立即保存原命令退出码。因为后面的 printf 会覆盖 $?。
+            (
+                f"printf '\\n{marker}%s{marker}\\n' "
+                '"$(pwd -P)"'  # 返回解析符号链接后的物理路径
+            ),  # 输出命令结束后的真实目录：<marker>/d/project/src<marker>
+            "exit $__learn_hermes_ec",  # 仍使用原命令的退出码退出，避免 printf 成功导致失败命令被误报为成功。
+        )
+    )
+    #  wrapped_command：追加了退出码保存和 pwd 输出的完整命令
+    #  marker：本次调用专用的随机解析边界
+    return wrapped_command, marker
 
 
 class LocalEnvironment:
