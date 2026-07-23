@@ -1464,6 +1464,19 @@ class LocalEnvironment:
                 f"\n[Command timed out after {timeout}s]"
             )
 
+        # snapshot 未初始化：candidate_path is None，不处理
+        if candidate_path is not None:
+            if timed_out:
+                # 只删除候选，正式快照保持原值
+                # 即使 Windows Bash wrapper 在 timeout 后继续运行，它也没有机会由 Python 提交为正式快照
+                self._remove_file(candidate_path)
+            else:
+                # 正常完成：提交，包括非零退出码
+                self._promote_snapshot_candidate(
+                    candidate_path,
+                    sensitive_env_names,
+                )
+
         output = collector.render(suffix=suffix)
         output, resolved_cwd = _extract_cwd_from_output(
             output,
