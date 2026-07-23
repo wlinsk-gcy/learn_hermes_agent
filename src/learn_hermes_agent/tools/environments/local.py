@@ -881,6 +881,27 @@ class LocalEnvironment:
             sensitive_env_names or ()
         )
 
+    def _new_snapshot_candidate(self) -> Path:
+        """
+        每次执行生成不同候选路径，避免并发命令写同一个临时文件.
+        候选文件与正式快照位于同一目录，后续才能原子替换.
+        """
+        return self._snapshot_path.with_name(
+            f"{self._snapshot_path.name}.tmp."
+            f"{uuid4().hex}"
+        )
+
+    @staticmethod
+    def _remove_file(path: Path | None) -> None:
+        """幂等清理：路径不存在或删除失败都不会破坏 terminal 主流程"""
+        if path is None:
+            return
+
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def execute(
             self,
             command: str,
