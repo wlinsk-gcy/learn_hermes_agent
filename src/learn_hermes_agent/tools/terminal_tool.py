@@ -125,6 +125,7 @@ def _get_or_create_environment(
 
         return environment
 
+
 # 清理单个 session environment
 def clear_terminal_environment(
         runtime_key: str | None,
@@ -153,6 +154,53 @@ def clear_terminal_environment(
 
     if environment is not None:
         environment.cleanup()
+
+
+def move_terminal_environment(
+        source_key: str | None,
+        target_key: str | None,
+) -> None:
+    """
+    迁移 compression environment
+
+    它移动的是同一个 LocalEnvironment 对象：
+
+    old-session -> environment A
+    变成
+    new-session -> environment A
+
+    不会复制包含环境状态的快照。若 target 已有旧对象，则在锁外清理被替换对象。
+
+    这个函数只在 CLI 完成一个 conversation turn 后调用，此时没有并行 terminal handler，因此 _env_lock 下的原子映射迁移足够
+    """
+    source = str(source_key or "default")
+    target = str(target_key or "default")
+
+    if source == target:
+        return
+
+    replaced: LocalEnvironment | None = None
+
+    with _env_lock:
+        environment = _active_environments.pop(
+            source,
+            None,
+        )
+
+        if environment is None:
+            return
+
+        replaced = _active_environments.pop(
+            target,
+            None,
+        )
+        _active_environments[target] = environment
+
+    if (
+            replaced is not None
+            and replaced is not environment
+    ):
+        replaced.cleanup()
 
 
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
