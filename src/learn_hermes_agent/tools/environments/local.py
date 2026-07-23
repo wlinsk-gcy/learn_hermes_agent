@@ -795,6 +795,10 @@ class LocalEnvironment:
             output,
             cwd_marker,
         )
+        #  Windows 终止 sleep 后，Bash wrapper 仍可能继续输出 marker。
+        # 必须使用 timed_out 这个真实状态，而不能假设 timeout 时一定没有 marker。
+        if timed_out:
+            resolved_cwd = None
         output = _strip_ansi(output)
         output = _redact_known_values(
             output,
