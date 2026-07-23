@@ -1191,6 +1191,38 @@ class LocalEnvironment:
 
         return "\n".join(parts)
 
+    def _probe_nonlogin(
+            self,
+            env: dict[str, str],
+    ) -> bool:
+        """
+        探测 non-login Bash
+        当 login bootstrap 失败时，这个函数检查普通 bash -c 是否仍可使用:
+        - 可用：后续回退到 non-login Bash。
+        - 不可用：保留 login-per-command 回退。
+        - 它只探测 Bash，不执行用户命令。
+        """
+        try:
+            proc = self._run_bash(
+                "true",
+                cwd=self.cwd,
+                env=env,
+                login=False,
+            )
+
+            return (
+                    self._wait_internal_process(
+                        proc,
+                        min(
+                            15,
+                            self._snapshot_timeout,
+                        ),
+                    )
+                    == 0
+            )
+        except OSError:
+            return False
+
     def execute(
             self,
             command: str,
