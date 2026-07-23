@@ -21,6 +21,31 @@ logger = logging.getLogger(__name__)
 _IS_WINDOWS = os.name == "nt"
 
 
+def _terminal_snapshot_dir() -> Path:
+    if _IS_WINDOWS:
+        local_appdata = os.environ.get(
+            "LOCALAPPDATA",
+            "",
+        ).strip()
+        base = (
+            Path(local_appdata)
+            if local_appdata
+            else Path.home() / "AppData" / "Local"
+        )
+        return (
+                base
+                / "learn_hermes_agent"
+                / "cache"
+                / "terminal"
+        )
+
+    return (
+            Path(tempfile.gettempdir())
+            / "learn_hermes_agent"
+            / "terminal"
+    )
+
+
 def _msys_to_windows_path(cwd: str) -> str:
     """
     这里只转换明确带单字母盘符的路径，避免把 /home、/tmp 等普通 POSIX 路径错误转换。
@@ -868,11 +893,10 @@ class LocalEnvironment:
 
         self._session_id = uuid4().hex[:12]
 
-        self._snapshot_dir = (
-                Path(tempfile.gettempdir())
-                / "learn_hermes_agent"
-                / "terminal"
-        )
+        # Windows 快照移出通用 %TEMP%，对齐 Hermes 的用户级应用缓存目录设计。
+        # chmod(0o600)保留，但只在POSIX 上作为权限不变量；Windows 不再用它判断 ACL 安全性。
+        self._snapshot_dir = _terminal_snapshot_dir()
+
         self._snapshot_dir.mkdir(
             parents=True,
             exist_ok=True,

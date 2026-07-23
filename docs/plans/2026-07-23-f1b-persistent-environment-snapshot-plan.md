@@ -1028,10 +1028,13 @@ Run:
 uv run python -m compileall src
 uv run learn-hermes-agent doctor
 uv run learn-hermes-agent tools
-uv run learn-hermes-agent echo "f1b-smoke"
+uv run python -c "import json, subprocess; p=subprocess.run(['uv','run','learn-hermes-agent','call-tool','echo',json.dumps({'text':'f1b-smoke'})], text=True, capture_output=True); print(p.stdout, end=''); print(p.stderr, end=''); raise SystemExit(p.returncode)"
 ```
 
 Expected: 全部成功，terminal schema 不变。
+
+Windows PowerShell 调用 native CLI 时可能剥离 JSON 参数中的双引号，因此 `call-tool`
+验证使用 Python argv 列表传递完整 JSON。
 
 **Step 2: 持久化不变量**
 
