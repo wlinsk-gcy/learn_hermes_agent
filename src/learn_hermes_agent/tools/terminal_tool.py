@@ -125,6 +125,35 @@ def _get_or_create_environment(
 
         return environment
 
+# 清理单个 session environment
+def clear_terminal_environment(
+        runtime_key: str | None,
+) -> None:
+    """
+    执行顺序：
+
+    取得该 key 的创建锁
+    → 从缓存移除 environment
+    → 释放锁
+    → 清理快照文件
+
+    暂时不删除 _creation_locks[key]。如果另一个线程仍在等待旧锁，此时删除会让新线程创建第二把锁，破坏“相同 key 只有一个创建者”的保证。
+    """
+    key = str(runtime_key or "default")
+    creation_lock = _get_creation_lock(key)
+
+    with creation_lock:
+        with _env_lock:
+            environment = (
+                _active_environments.pop(
+                    key,
+                    None,
+                )
+            )
+
+    if environment is not None:
+        environment.cleanup()
+
 
 # 用于识别明显会让进程脱离前台控制的 shell 包装命令
 # - nohup：忽略挂断信号，常用于让程序持续运行。
