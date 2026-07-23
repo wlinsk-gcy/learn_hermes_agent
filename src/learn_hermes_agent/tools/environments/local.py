@@ -1388,24 +1388,23 @@ class LocalEnvironment:
             )
         )
 
-        creationflags = _windows_hide_flags()
-        if _IS_WINDOWS:
-            creationflags |= getattr(
-                subprocess,
-                "CREATE_NEW_PROCESS_GROUP",
-                0,
-            )
-        # 执行包装后的命令
-        proc = subprocess.Popen(
-            [self.bash_path, "-c", wrapped_command],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            cwd=str(cwd),
-            env=env,
-            start_new_session=not _IS_WINDOWS,
-            creationflags=creationflags,
+        login = (
+                not self._snapshot_ready
+                and not self._prefer_nonlogin
         )
+
+        try:
+            # 切换到统一 Bash 启动方法
+            proc = self._run_bash(
+                wrapped_command,
+                cwd=cwd,
+                env=env,
+                login=login,
+            )
+        except BaseException:
+            # 捕获 BaseException 只用于删除尚未提交的候选文件，然后立即重新抛出，不吞掉异常
+            self._remove_file(candidate_path)
+            raise
 
         reader = threading.Thread(
             target=self._drain_output,
