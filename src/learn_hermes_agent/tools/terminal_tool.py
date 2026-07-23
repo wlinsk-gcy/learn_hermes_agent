@@ -14,6 +14,7 @@ from learn_hermes_agent.tools.registry import (
     ToolEntry,
     ToolRegistry,
 )
+from learn_hermes_agent.agent.tool_context import ToolExecutionContext
 
 _STATIC_SENSITIVE_ENV_NAMES = {
     "OPENAI_API_KEY",
@@ -230,12 +231,22 @@ def _provider_secret_env_names(
     return names
 
 
-def _resolve_workdir(raw_workdir: object) -> Path:
+def _resolve_workdir(
+        raw_workdir: object,
+        context: ToolExecutionContext | None,
+) -> Path:
     """
-    这里不限制 workdir 必须位于 workspace 内，因为本批的 local terminal 是宿主机 shell，不是 workspace sandbox；但必须是存在的目录。
+    显式 workdir 优先；否则使用当前工具执行上下文的 cwd。
+    相对 workdir 也以 context.cwd 为基准。
     """
+    base_cwd = (
+        context.cwd
+        if context is not None
+        else Path.cwd()
+    ).resolve()
+
     if raw_workdir is None or raw_workdir == "":
-        return Path.cwd().resolve()
+        return base_cwd
 
     if not isinstance(raw_workdir, str):
         raise ValueError(
@@ -245,7 +256,7 @@ def _resolve_workdir(raw_workdir: object) -> Path:
     workdir = Path(raw_workdir).expanduser()
 
     if not workdir.is_absolute():
-        workdir = Path.cwd() / workdir
+        workdir = base_cwd / workdir
 
     workdir = workdir.resolve()
 
