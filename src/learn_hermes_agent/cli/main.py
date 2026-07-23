@@ -370,6 +370,8 @@ def run_interactive_chat(*, tool_demo: bool = False, show_messages: bool = False
                     system_prompt=system_prompt,
                 )
 
+                # 必须在覆盖 session_id 前清理，否则会误清理新 session
+                clear_terminal_environment(session_id)
                 clear_session_cwd(session_id)
                 session_id = new_session_id
 
