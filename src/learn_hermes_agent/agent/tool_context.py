@@ -18,6 +18,11 @@ class ToolExecutionContext:
     # 当前这一次工具执行上下文是否开启“跳过普通审批”的模式。但hardline block就算是yolo_enabled=True也不应该被跳过
     yolo_enabled: bool = False
 
+    @property
+    def runtime_key(self) -> str:
+        """session_id 必须优先，因为 interactive CLI 每轮都会创建新 task_id，但同一会话的 session_id 不变"""
+        return self.session_id or self.task_id or "default"
+
 
 def normalize_approval_mode(value: object) -> ApprovalMode:
     if isinstance(value, str):
