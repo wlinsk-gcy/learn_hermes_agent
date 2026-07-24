@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 
 @dataclass(frozen=True)
@@ -54,9 +56,11 @@ class RetryPolicy:
 
 
 def parse_retry_after(
-        value: str | None,
-) -> float | None:
-    """解析 Retry-After 的数字秒数形式。"""
+        value: str | None, # 接收 Header 的原始字符串，也允许没有该 Header 时传入 None
+        *,
+        now: datetime | None = None, # 计算 HTTP-date 距离当前时间还有多少秒。允许注入固定时间，方便验证
+) -> float | None: # 解析成功返回秒数，解析失败返回 None
+    """将 Retry-After 的数字或 HTTP-date 形式解析为秒数。"""
     if not isinstance(value, str):
         return None
 
@@ -67,9 +71,46 @@ def parse_retry_after(
     try:
         seconds = float(raw_value)
     except ValueError:
+        pass
+    else:
+        # 拒绝不合法的等待时间, math.isfinite() 用来拒绝："nan" "inf" "-inf" 这些值虽然能被 float() 解析，但不能用于安全的等待计算。
+        if seconds < 0 or not math.isfinite(seconds):
+            return None
+        return seconds
+
+    try:
+        # 运行到这里，说明输入不是数字。使用标准库解析 HTTP 日期："Wed, 21 Oct 2015 07:28:00 GMT" 得到一个 datetime 对象，表示服务端要求可以重新请求的绝对时间。
+        retry_at = parsedate_to_datetime(raw_value)
+    except (TypeError, ValueError, OverflowError):
+        # - TypeError：输入类型不符合解析器要求。
+        # - ValueError：日期格式不合法。
+        # - OverflowError：日期数值超出系统可表示范围。
         return None
 
-    if seconds < 0 or not math.isfinite(seconds):
-        return None
+    # 检查解析出来的日期是否缺少时区， 某些旧式 HTTP 日期格式可能只包含日期和时间，不明确写出时区
+    if retry_at.tzinfo is None:
+        # 如果没有时区，就按照 HTTP 日期约定把它解释为 UTC。
+        # 注意：replace() 不改变时分秒，只补充时区信息。
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
 
-    return seconds
+    if now is None:
+        reference_time = datetime.now(timezone.utc) # 如果调用方没有提供 now，就获取当前 UTC 时间
+    else:
+        # now 是开发者注入的依赖，不是来自服务端的不可信 Header
+        # 因此类型错误时直接抛出异常，而不是安静返回 None。
+        if not isinstance(now, datetime):
+            raise TypeError(
+                "now must be a datetime or None"
+            )
+        reference_time = now
+    # 检查基准时间是否缺少时区
+    if reference_time.tzinfo is None:
+        # 如果是 naive datetime，同样把它解释为 UTC，避免报错：can't subtract offset-naive and offset-aware datetimes
+        reference_time = reference_time.replace(
+            tzinfo=timezone.utc
+        )
+    # 计算目标时间与当前时间之差，然后转换成浮点秒数，确保结果不会小于零
+    return max(
+        0.0,
+        (retry_at - reference_time).total_seconds(),
+    )
