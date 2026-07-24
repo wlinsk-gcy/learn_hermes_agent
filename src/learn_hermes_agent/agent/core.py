@@ -146,6 +146,92 @@ class AIAgent:
 
         return transport
 
+    def _complete_with_fallback(
+            self,
+            messages: Sequence[ChatMessage],
+            *,
+            tools: Sequence[dict[str, Any]] | None = None,
+    ) -> NormalizedResponse:
+        """
+        完整拥有调用顺序：
+
+        选择 Binding
+            -> 获取 Transport
+            -> 转换消息和工具
+            -> 构造请求参数
+            -> Client 发出原始请求
+            -> Transport 校验并标准化
+            -> 失败则尝试下一个 Binding
+
+        只捕获 RuntimeError 和 ValueError，不会把 TypeError、AssertionError 等代码错误伪装成 fallback
+
+        """
+        errors: list[str] = []
+
+        self.last_provider_model = None
+        self.last_provider_index = None
+        self.last_provider_error = None
+
+        for index, binding in enumerate(
+                self.provider_bindings
+        ):
+            runtime = binding.runtime
+
+            try:
+                transport = self._get_transport(
+                    runtime.api_mode
+                )
+
+                converted_messages = (
+                    transport.convert_messages(messages)
+                )
+
+                converted_tools = (
+                    transport.convert_tools(tools)
+                )
+
+                request_kwargs = (
+                    transport.build_kwargs(
+                        model=runtime.model,
+                        messages=converted_messages,
+                        tools=converted_tools,
+                    )
+                )
+
+                raw_response = binding.client.create(
+                    **request_kwargs
+                )
+
+                if not transport.validate_response(
+                        raw_response
+                ):
+                    raise RuntimeError(
+                        "Provider response failed validation"
+                    )
+
+                response = transport.normalize_response(
+                    raw_response
+                )
+
+            except (RuntimeError, ValueError) as exc:
+                error_text = (
+                    f"{runtime.model}: {exc}"
+                )
+                errors.append(error_text)
+                self.last_provider_error = error_text
+                continue
+
+            self.last_provider_model = runtime.model
+            self.last_provider_index = index
+            self.last_provider_error = None
+            return response
+
+        joined_errors = "; ".join(errors)
+        raise RuntimeError(
+            "All provider fallbacks failed: "
+            f"{joined_errors}"
+        )
+
     def _record_provider_response(self, response: NormalizedResponse) -> None:
         self.last_finish_reason = response.finish_reason
         self.last_usage = response.usage
