@@ -4,11 +4,22 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from learn_hermes_agent.providers import (
+    get_provider_profile,
+)
 from learn_hermes_agent.providers.base import ProviderTransport
 from learn_hermes_agent.providers.client import ProviderClient
-from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
+from learn_hermes_agent.providers.fake import (
+    FakeProviderClient,
+    FakeProviderTransport,
+    tool_demo_client,
+    tool_demo_provider,
+)
 from learn_hermes_agent.providers.fallback import FallbackProviderTransport
-from learn_hermes_agent.providers.openai_compatible import OpenAICompatibleProviderTransport
+from learn_hermes_agent.providers.openai_compatible import (
+    OpenAICompatibleClient,
+    OpenAICompatibleProviderTransport,
+)
 
 
 @dataclass(frozen=True)
@@ -41,9 +52,9 @@ class ProviderRuntime:
         if (
                 isinstance(self.timeout_seconds, bool)
                 or not isinstance(
-                    self.timeout_seconds,
-                    (int, float),
-                )
+            self.timeout_seconds,
+            (int, float),
+        )
                 or self.timeout_seconds <= 0
         ):
             raise ValueError(
