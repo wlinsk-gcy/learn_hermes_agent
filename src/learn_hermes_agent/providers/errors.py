@@ -65,14 +65,129 @@ class ProviderRequestError(RuntimeError):
         }
         self.response_body = response_body
 
+
 # 使用 frozen=True 是因为它是一份已经完成的分类结果，后续请求编排只能读取，不应再修改
 @dataclass(frozen=True)
 class ProviderErrorDecision:
     """错误分类器为请求编排层生成的处理决策。"""
 
-    kind: ProviderErrorKind # 错误属于哪一类
-    retryable: bool # 当前 binding 是否可以再次请求
-    should_fallback: bool # 重试耗尽或不应重试时，是否尝试下一个 binding
-    should_rotate_credential: bool = False # 为以后 CredentialPool 保留；当前不会真正换 Key
-    status_code: int | None = None # 保留 HTTP 状态码
-    retry_after_seconds: float | None = None # 服务端要求等待的秒数
+    kind: ProviderErrorKind  # 错误属于哪一类
+    retryable: bool  # 当前 binding 是否可以再次请求
+    should_fallback: bool  # 重试耗尽或不应重试时，是否尝试下一个 binding
+    should_rotate_credential: bool = False  # 为以后 CredentialPool 保留；当前不会真正换 Key
+    status_code: int | None = None  # 保留 HTTP 状态码
+    retry_after_seconds: float | None = None  # 服务端要求等待的秒数
+
+
+def _find_provider_request_error(
+        error: BaseException,
+) -> ProviderRequestError | None:
+    """沿异常链查找结构化 Provider 错误。"""
+    current: BaseException | None = error
+    visited: set[int] = set()
+
+    for _ in range(5):
+        if current is None:
+            break
+
+        identity = id(current)
+        if identity in visited:
+            break
+        visited.add(identity)
+
+        if isinstance(current, ProviderRequestError):
+            return current
+
+        current = (
+                current.__cause__
+                or current.__context__
+        )
+
+    return None
+
+
+def classify_provider_error(
+        error: BaseException,
+) -> ProviderErrorDecision:
+    """根据结构化状态码生成基础恢复决策。"""
+    provider_error = _find_provider_request_error(
+        error
+    )
+    status_code = (
+        provider_error.status_code
+        if provider_error is not None
+        else None
+    )
+
+    def decision(
+            kind: ProviderErrorKind,
+            *,
+            retryable: bool,
+            should_fallback: bool = True,
+            should_rotate_credential: bool = False,
+    ) -> ProviderErrorDecision:
+        return ProviderErrorDecision(
+            kind=kind,
+            retryable=retryable,
+            should_fallback=should_fallback,
+            should_rotate_credential=(
+                should_rotate_credential
+            ),
+            status_code=status_code,
+        )
+
+    if status_code in {401, 403}:
+        return decision(
+            ProviderErrorKind.auth,
+            retryable=False,
+            should_rotate_credential=True,
+        )
+
+    if status_code == 402:
+        return decision(
+            ProviderErrorKind.billing,
+            retryable=False,
+            should_rotate_credential=True,
+        )
+
+    if status_code == 408:
+        return decision(
+            ProviderErrorKind.timeout,
+            retryable=True,
+        )
+
+    if status_code == 429:
+        return decision(
+            ProviderErrorKind.rate_limit,
+            retryable=True,
+            should_rotate_credential=True,
+        )
+
+    if status_code in {503, 529}:
+        return decision(
+            ProviderErrorKind.overloaded,
+            retryable=True,
+        )
+
+    if (
+            status_code is not None
+            and 500 <= status_code < 600
+    ):
+        return decision(
+            ProviderErrorKind.server_error,
+            retryable=True,
+        )
+
+    if (
+            status_code is not None
+            and 400 <= status_code < 500
+    ):
+        return decision(
+            ProviderErrorKind.format_error,
+            retryable=False,
+        )
+
+    return decision(
+        ProviderErrorKind.unknown,
+        retryable=False,
+    )
