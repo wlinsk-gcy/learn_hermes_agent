@@ -26,14 +26,16 @@ class OpenAICompatibleClient:
             self,
             *,
             base_url: str,
-            api_key: str,
+            api_key: str | None,
+            default_headers: tuple[
+                tuple[str, str],
+                ...
+            ] = (),
             timeout_seconds: float = 60.0,
     ) -> None:
         """新 Client 只保存执行 HTTP 请求需要的信息，不保存 model。模型会由 Transport 放进每次请求参数"""
         if not base_url:
             raise ValueError("base_url must not be empty")
-        if not api_key:
-            raise ValueError("api_key must not be empty")
         if timeout_seconds <= 0:
             raise ValueError(
                 "timeout_seconds must be positive"
@@ -43,6 +45,7 @@ class OpenAICompatibleClient:
             f"{base_url.rstrip('/')}/chat/completions"
         )
         self._api_key = api_key
+        self._default_headers = default_headers
         self._timeout_seconds = timeout_seconds
 
     def create(
@@ -71,11 +74,21 @@ class OpenAICompatibleClient:
         ).encode("utf-8")
 
         headers = {
-            "Authorization": (
-                f"Bearer {self._api_key}"
-            ),
-            "Content-Type": "application/json",
+            name: value
+            for name, value in self._default_headers
+            if name.strip().lower() not in {
+                "authorization",
+                "content-type",
+                "accept",
+            }
         }
+
+        headers["Content-Type"] = "application/json"
+
+        if self._api_key:
+            headers["Authorization"] = (
+                f"Bearer {self._api_key}"
+            )
         # 这里使用 is True，只有明确传入布尔值 True 才启用流式模式，避免 "true"、1 等意外值改变请求行为
         if request_kwargs.get("stream") is True:
             headers["Accept"] = "text/event-stream"
