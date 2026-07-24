@@ -25,6 +25,7 @@ from learn_hermes_agent.providers.request import (
 )
 from learn_hermes_agent.providers.streaming import (
     ProviderStreamCallbacks,
+    ProviderStreamError,
 )
 
 """
@@ -233,7 +234,7 @@ class AIAgent:
                     request_provider_completion(
                         binding,
                         request_kwargs,
-                        callbacks=callbacks, # 不传 stream_callback 时，callbacks=None，仍然走原同步路径
+                        callbacks=callbacks,  # 不传 stream_callback 时，callbacks=None，仍然走原同步路径
                     )
                 )
 
@@ -247,6 +248,18 @@ class AIAgent:
                 response = transport.normalize_response(
                     raw_response
                 )
+            # ProviderStreamError 继承自 RuntimeError，因此必须放在普通 RuntimeError 捕获之前
+            except ProviderStreamError as exc:
+                error_text = (
+                    f"{runtime.model}: {exc}"
+                )
+                self.last_provider_error = error_text
+                # callback 已成功收到内容后失败：立即停止，不能把 fallback 的回答接在半段文本后面
+                if exc.text_emitted:
+                    raise
+                # 首个 callback 前失败：用户还没看到 partial text，可以切换 fallback
+                errors.append(error_text)
+                continue
 
             except (RuntimeError, ValueError) as exc:
                 error_text = (
