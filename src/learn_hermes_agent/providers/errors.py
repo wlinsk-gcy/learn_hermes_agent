@@ -51,6 +51,15 @@ _TIMEOUT_PATTERNS = (
     "deadline exceeded",
 )
 
+_REQUEST_VALIDATION_PATTERNS = (
+    "unknown parameter",
+    "unsupported parameter",
+    "unrecognized request argument",
+    "invalid_request_error",
+    "unknown_parameter",
+    "unsupported_parameter",
+)
+
 
 # 采用与 Hermes 相同的 Enum 和小写成员名。暂时只定义当前可靠性链需要的分类，不复制其他 Provider 专有类型
 class ProviderErrorKind(Enum):
@@ -258,6 +267,19 @@ def classify_provider_error(
         return decision(
             ProviderErrorKind.overloaded,
             retryable=True,
+        )
+
+    if (
+            status_code in {500, 502}
+            and any(
+                pattern in error_text
+                for pattern
+                in _REQUEST_VALIDATION_PATTERNS
+            )
+    ):
+        return decision(
+            ProviderErrorKind.format_error,
+            retryable=False,
         )
 
     if (
