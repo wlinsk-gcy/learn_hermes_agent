@@ -72,6 +72,21 @@ class OpenAICompatibleClient:
             headers=headers,
         )
 
+    @staticmethod
+    def _read_http_error_body(
+            exc: error.HTTPError,
+    ) -> str:
+        """读取并关闭 urllib 的 HTTP 错误响应。"""
+        try:
+            # read() 拿到的是 bytes
+            # .decode("utf-8") 把 bytes 转成字符串
+            return exc.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+        finally:
+            exc.close()
+
     def _read_json_response(
             self,
             http_request: request.Request,
@@ -90,10 +105,7 @@ class OpenAICompatibleClient:
         # 捕获 HTTP 状态码错误，比如：404这种，urllib 遇到这些状态码时会抛 HTTPError。
         except error.HTTPError as exc:
             # 读取错误响应的正文。
-            error_body = exc.read().decode(
-                "utf-8",
-                errors="replace",
-            )
+            error_body = self._read_http_error_body(exc)
             raise RuntimeError(
                 "Provider request failed with HTTP "
                 f"{exc.code}: "
@@ -134,10 +146,7 @@ class OpenAICompatibleClient:
                 )
         # HTTP、网络和超时错误继续统一转换成 RuntimeError。
         except error.HTTPError as exc:
-            error_body = exc.read().decode(
-                "utf-8",
-                errors="replace",
-            )
+            error_body = self._read_http_error_body(exc)
             raise RuntimeError(
                 "Provider request failed with HTTP "
                 f"{exc.code}: "
