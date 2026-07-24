@@ -70,6 +70,14 @@ register_provider_profile(
         api_key_env="OPENROUTER_API_KEY",
     )
 )
+register_provider_profile(
+    ProviderProfile(
+        name="azure-openai",
+        api_mode="chat_completions",
+        requires_base_url=True,
+        api_key_env="AZURE_OPENAI_API_KEY",
+    )
+)
 
 __all__ = [
     "ProviderProfile",
