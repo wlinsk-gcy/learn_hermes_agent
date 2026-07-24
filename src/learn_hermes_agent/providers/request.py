@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import random
+import time
+from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from typing import Any
-from collections.abc import Iterable
 
 from learn_hermes_agent.providers.runtime import (
     ProviderBinding,
@@ -11,6 +14,19 @@ from learn_hermes_agent.providers.streaming import (
     ProviderStreamCallbacks,
     ProviderStreamError,
 )
+from learn_hermes_agent.providers.errors import (
+    ProviderRequestError,
+    classify_provider_error,
+)
+from learn_hermes_agent.providers.retry import (
+    RetryPolicy,
+    retry_delay,
+)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
 
 # 每次创建独立的流式 accumulator
 def _request_provider_completion_once(
@@ -104,6 +120,7 @@ def _request_provider_completion_once(
             except Exception:
                 pass
 
+
 # 公共函数以后负责 retry、sleep 和 attempt 预算
 # 同步与流式不会各自复制一套重试循环
 def request_provider_completion(
@@ -111,12 +128,79 @@ def request_provider_completion(
         request_kwargs: dict[str, Any],
         *,
         callbacks: ProviderStreamCallbacks | None = None,
+        retry_policy: RetryPolicy | None = None, # 可选重试策略
+        sleep_fn: Callable[[float], None] = time.sleep, # 执行计算出的等待时间的函数
+        random_fn: Callable[[], float] = random.random, # jitter 使用的随机数来源
+        now_fn: Callable[[], datetime] = _utc_now, # 获取当前 UTC 时间的函数，用于解析 HTTP-date
 ) -> object:
     """执行单个 binding 的 Provider 请求生命周期。"""
-    return _request_provider_completion_once(
-        binding,
-        request_kwargs,
-        callbacks=callbacks,
+    if retry_policy is None:
+        policy = RetryPolicy()
+    elif not isinstance(retry_policy, RetryPolicy):
+        raise TypeError(
+            "retry_policy must be a RetryPolicy or None"
+        )
+    else:
+        policy = retry_policy
+
+    # 执行有界请求循环，默认执行1次重试2次
+    for attempt_number in range(
+            1,
+            policy.max_attempts + 1,
+    ):
+        try:
+            return _request_provider_completion_once(
+                binding,
+                request_kwargs,
+                callbacks=callbacks,
+            )
+        # 只捕获结构化 Provider 错误
+        except ProviderRequestError as exc:
+            # 把错误交给分类器，得到处理决策
+            decision = classify_provider_error(
+                exc,
+                provider=binding.runtime.provider, # 传入 Provider 名称是为了正确识别 OpenRouter 上游 429
+            )
+
+            """
+            满足以下任意条件就停止当前 binding 的重试
+            1. 错误本身不可重试；
+            2. 已经用完最大请求次数。
+            例如：
+            401 auth                 → retryable=False，立即停止
+            OpenRouter upstream 429  → retryable=False，立即停止
+            503 overloaded           → retryable=True，可以继续
+            第 3 次请求仍然失败       → 已达到 max_attempts，停止
+            """
+            if (
+                    not decision.retryable
+                    or attempt_number
+                    >= policy.max_attempts
+            ):
+                raise
+            # 从结构化错误中读取服务端的 Retry-After Header
+            retry_after = exc.response_headers.get(
+                "retry-after"
+            )
+            # 只有存在 Retry-After 时才获取当前时间，因为 HTTP-date 解析可能需要它
+            now = (
+                now_fn()
+                if retry_after is not None
+                else None
+            )
+            # 计算最终应该等待多少秒
+            delay = retry_delay(
+                attempt_number, # 当前失败的 attempt 编号, 首次请求失败时是 1，因此本地退避基础值约为 2 秒
+                policy=policy, # 基础等待、最大上限等策略
+                retry_after=retry_after, # 把服务端 Header 交给延迟选择器, 有效时优先使用；无效或缺失时使用本地指数退避
+                random_fn=random_fn, # 把可注入的随机源继续传给 jitter 计算, 如果使用了有效的 Retry-After，随机函数不会被调用
+                now=now, # 传入 HTTP-date 计算使用的基准时间
+            )
+            sleep_fn(delay)
+
+    raise AssertionError(
+        "Provider retry lifecycle exhausted "
+        "without a result or error"
     )
 
 
