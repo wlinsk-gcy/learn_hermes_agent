@@ -61,6 +61,57 @@ class FakeProviderClient:
         }
 
 
+def tool_demo_client(
+        model: str = "fake-basic",
+) -> FakeProviderClient:
+    """
+    依次模拟：
+    1. Assistant 请求调用 echo。
+    2. 工具执行后返回最终回答。
+    """
+    return FakeProviderClient(
+        model=model,
+        scripted_responses=[
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_echo_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "echo",
+                                        "arguments": (
+                                            '{"text":'
+                                            '"hello from tool"}'
+                                        ),
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": (
+                                "final answer after echo tool"
+                            ),
+                        },
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        ],
+    )
+
 
 class FakeProviderTransport:
     def __init__(
