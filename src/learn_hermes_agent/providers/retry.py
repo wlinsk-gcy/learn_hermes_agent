@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -56,10 +58,10 @@ class RetryPolicy:
 
 
 def parse_retry_after(
-        value: str | None, # 接收 Header 的原始字符串，也允许没有该 Header 时传入 None
+        value: str | None,  # 接收 Header 的原始字符串，也允许没有该 Header 时传入 None
         *,
-        now: datetime | None = None, # 计算 HTTP-date 距离当前时间还有多少秒。允许注入固定时间，方便验证
-) -> float | None: # 解析成功返回秒数，解析失败返回 None
+        now: datetime | None = None,  # 计算 HTTP-date 距离当前时间还有多少秒。允许注入固定时间，方便验证
+) -> float | None:  # 解析成功返回秒数，解析失败返回 None
     """将 Retry-After 的数字或 HTTP-date 形式解析为秒数。"""
     if not isinstance(value, str):
         return None
@@ -94,7 +96,7 @@ def parse_retry_after(
         retry_at = retry_at.replace(tzinfo=timezone.utc)
 
     if now is None:
-        reference_time = datetime.now(timezone.utc) # 如果调用方没有提供 now，就获取当前 UTC 时间
+        reference_time = datetime.now(timezone.utc)  # 如果调用方没有提供 now，就获取当前 UTC 时间
     else:
         # now 是开发者注入的依赖，不是来自服务端的不可信 Header
         # 因此类型错误时直接抛出异常，而不是安静返回 None。
@@ -113,4 +115,79 @@ def parse_retry_after(
     return max(
         0.0,
         (retry_at - reference_time).total_seconds(),
+    )
+
+
+def jittered_backoff(
+        retry_number: int,
+        *,
+        policy: RetryPolicy,
+        random_fn: Callable[[], float] = random.random,
+) -> float:
+    """
+    计算带 jitter 且受 cap 限制的指数退避时间。
+    例如等待：2 → 4 → 8 → 16
+    """
+    if (
+            isinstance(retry_number, bool)
+            or not isinstance(retry_number, int)
+    ):
+        raise TypeError(
+            "retry_number must be an integer"
+        )
+
+    if retry_number < 1:
+        raise ValueError(
+            "retry_number must be at least 1"
+        )
+
+    if not isinstance(policy, RetryPolicy):
+        raise TypeError(
+            "policy must be a RetryPolicy"
+        )
+
+    if (
+            policy.backoff_base_seconds == 0
+            or policy.backoff_cap_seconds == 0
+    ):
+        return 0.0
+
+    try:
+        # math.ldexp(base, n) 等价于 base * 2**n，同时能更安全地处理极大的重试次数
+        nominal_delay = math.ldexp(
+            float(policy.backoff_base_seconds),
+            retry_number - 1,
+        )
+    except OverflowError:
+        nominal_delay = float(
+            policy.backoff_cap_seconds
+        )
+
+    nominal_delay = min(
+        nominal_delay,
+        float(policy.backoff_cap_seconds),
+    )
+
+    random_value = random_fn()
+    if (
+            isinstance(random_value, bool)
+            or not isinstance(random_value, (int, float))
+    ):
+        raise TypeError(
+            "random_fn must return a number"
+        )
+
+    if (
+            not math.isfinite(random_value)
+            or not 0.0 <= random_value <= 1.0
+    ):
+        raise ValueError(
+            "random_fn must return a value between 0 and 1"
+        )
+
+    jitter = nominal_delay * 0.5 * random_value
+
+    return min(
+        nominal_delay + jitter,
+        float(policy.backoff_cap_seconds),
     )
