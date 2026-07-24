@@ -4,6 +4,12 @@ from enum import Enum
 from dataclasses import dataclass
 from collections.abc import Iterator
 
+_OVERLOADED_PATTERNS = (
+    "overloaded",
+    "at capacity",
+    "over capacity",
+)
+
 
 # 采用与 Hermes 相同的 Enum 和小写成员名。暂时只定义当前可靠性链需要的分类，不复制其他 Provider 专有类型
 class ProviderErrorKind(Enum):
@@ -115,6 +121,27 @@ def _find_provider_request_error(
     return None
 
 
+def _classification_text(
+        error: BaseException,
+        provider_error: ProviderRequestError | None,
+) -> str:
+    """汇总异常链和安全响应正文，供分类匹配。"""
+    parts: list[str] = []
+
+    for current in _iter_error_chain(error):
+        message = str(current).strip()
+        if message:
+            parts.append(message)
+
+    if (
+            provider_error is not None
+            and provider_error.response_body
+    ):
+        parts.append(provider_error.response_body)
+
+    return " ".join(parts).casefold()
+
+
 def classify_provider_error(
         error: BaseException,
 ) -> ProviderErrorDecision:
@@ -126,6 +153,11 @@ def classify_provider_error(
         provider_error.status_code
         if provider_error is not None
         else None
+    )
+
+    error_text = _classification_text(
+        error,
+        provider_error,
     )
 
     def decision(
@@ -166,6 +198,15 @@ def classify_provider_error(
         )
 
     if status_code == 429:
+        if any(
+                pattern in error_text
+                for pattern in _OVERLOADED_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.overloaded,
+                retryable=True,
+            )
+
         return decision(
             ProviderErrorKind.rate_limit,
             retryable=True,
