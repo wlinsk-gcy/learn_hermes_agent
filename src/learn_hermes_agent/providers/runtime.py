@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
 from learn_hermes_agent.providers import (
     get_provider_profile,
@@ -67,6 +68,35 @@ class ProviderBinding:
     client: ProviderClient
 
 
+def _is_azure_openai_v1_base_url(
+        base_url: str,
+) -> bool:
+    try:
+        parsed = urlsplit(base_url)
+        port = parsed.port
+    except ValueError:
+        return False
+
+    hostname = (parsed.hostname or "").lower()
+    suffix = ".openai.azure.com"
+
+    if not hostname.endswith(suffix):
+        return False
+
+    resource_name = hostname[:-len(suffix)]
+    if not resource_name or "." in resource_name:
+        return False
+
+    return (
+            parsed.scheme.lower() == "https"
+            and parsed.username is None
+            and parsed.password is None
+            and port is None
+            and parsed.path.rstrip("/") == "/openai/v1"
+            and not parsed.query
+            and not parsed.fragment
+    )
+
 
 def _resolve_provider_runtime(
         model_config: dict[str, Any],
@@ -110,6 +140,20 @@ def _resolve_provider_runtime(
         raise ValueError(
             "Provider requires model.base_url: "
             f"{profile.name!r}"
+        )
+    if (
+            profile.name == "azure-openai"
+            and (
+                    base_url is None
+                    or not _is_azure_openai_v1_base_url(
+                        base_url
+                    )
+            )
+    ):
+        raise ValueError(
+            "Azure OpenAI v1 base_url must match "
+            "'https://<resource>.openai.azure.com/"
+            "openai/v1'"
         )
 
     if profile.requires_api_key:
