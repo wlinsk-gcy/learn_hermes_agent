@@ -45,7 +45,18 @@ def get_transport(api_mode: str) -> ProviderTransport:
     return transport_cls()
 
 
+from learn_hermes_agent.providers.transports.chat_completions import (
+    ChatCompletionsTransport,
+)
+# 这样的话，导入 providers.transports 时自动注册：chat_completions -> ChatCompletionsTransport
+# 之后：get_transport("chat_completions") 就能得到新的 Transport 实例。
+register_transport(
+    ChatCompletionsTransport().api_mode,
+    ChatCompletionsTransport,
+)
+
 __all__ = [
+    "ChatCompletionsTransport",
     "ProviderTransport",
     "get_transport",
     "register_transport",
