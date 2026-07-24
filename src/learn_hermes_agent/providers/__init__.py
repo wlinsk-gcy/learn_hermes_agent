@@ -79,6 +79,17 @@ register_provider_profile(
     )
 )
 
+register_provider_profile(
+    ProviderProfile(
+        name="local",
+        api_mode="chat_completions",
+        aliases=("vllm",),
+        default_base_url="http://127.0.0.1:8000/v1",
+        requires_api_key=False,
+        is_local=True,
+    )
+)
+
 __all__ = [
     "ProviderProfile",
     "get_provider_profile",
