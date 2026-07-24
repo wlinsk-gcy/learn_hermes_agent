@@ -2410,6 +2410,43 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 
 开始 Gemini Native Provider 前，先重新分析参考仓库最新 HEAD 中 Gemini client facade、原生事件到通用 request lifecycle 的适配方式、thought signature、tool call 和 usage 语义，形成独立设计和实施计划。Gemini 不绕过当前 request helper/fallback 生命周期，也不把网络流生命周期放入 `ProviderTransport`。
 
+## 2026-07-24 Provider Reliability 设计与计划已完成
+
+### 本次目标
+
+在进入新的原生 Provider 前，先补齐当前 OpenAI-compatible 主链最关键的可靠性能力，并把首批端点范围收敛到 OpenRouter、Azure OpenAI v1 和 vLLM/local。
+
+### 已完成
+
+- 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的错误分类、retry/backoff、stream supervision、partial stub、OpenRouter Profile、Azure 范围和 Local / Custom Endpoint 意图。
+- 确认采用独立 Provider reliability layer，不把 retry、watchdog 或 continuation 放进 Transport。
+- 确认 credential rotation 延后；当前只保留 `should_rotate_credential` 决策字段。
+- 确认 Azure 本批仅支持 Azure OpenAI v1 API Key + Chat Completions，使用 `azure-openai` 名称，不占用 Hermes 为完整 Azure Foundry 保留的 `azure` 别名。
+- 确认 vLLM 通过 canonical `local` Profile 和 `vllm` alias 接入，API Key 可选。
+- 完成设计文档与 Task 1 至 Task 14 的实施计划。
+- 校正 streaming 兼容行为：`stream=True` 返回完整响应时直接使用该响应，只对后续请求禁用 streaming，不重复发送同步请求。
+
+### 修改文件
+
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-24-provider-reliability-openai-compatible-design.md`
+- `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`
+
+### 尚未实现
+
+- 结构化 Provider 错误和错误分类。
+- Retry-After、限流语义和有界 retry/backoff。
+- OpenRouter、Azure OpenAI v1 与 local/vLLM Profile。
+- stale-stream watchdog、attempt fence 和 streaming 动态降级。
+- partial stream stub 和 continuation。
+- credential pool / rotation、完整 Azure Foundry、Gemini、Anthropic 和 Codex Responses。
+
+### 下一步
+
+使用 `superpowers:executing-plans` 执行 `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`，从 Task 1 Provider 错误原语开始。源码仍由用户手工抄写，Codex 一次只提供一个小步骤。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

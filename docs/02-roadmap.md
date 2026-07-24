@@ -15,7 +15,8 @@
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
 - F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成。
-- 下一步先重新分析参考仓库最新 HEAD，再设计 Gemini Native Provider。
+- Provider Reliability and Targeted OpenAI-Compatible Profiles 的设计与实施计划已完成，源码尚未开始。
+- 下一步执行该计划 Task 1：Provider 错误原语。
 
 ## Phase 0：项目基础与约定
 
@@ -246,7 +247,7 @@
 
 ## Phase 9：Provider Runtime 扩展
 
-状态：最小版、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成；原生 Provider 和高级可靠性能力待后续批次。
+状态：最小版、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成；Provider Reliability 已完成设计，等待按计划实施。
 
 目标：把单一 OpenAI-compatible provider 扩展为 Hermes 风格 runtime。
 
@@ -264,14 +265,20 @@
 - Fake Client 原始流式 chunk 和 OpenAI-compatible SSE I/O、事件分帧、`[DONE]` 终止与 response 生命周期。
 - 流式请求在可见输出前失败时允许 fallback；已经显示文本或 reasoning 后失败时禁止拼接 fallback 输出。
 
-尚未实现：
+已设计、尚未实现：
 
-- 跨线程 interrupt、stale-stream watchdog 和 partial continuation。
+- 结构化 Provider 错误、限流分类和有界 retry/backoff。
+- stale-stream watchdog、attempt fence 和 partial continuation。
+- OpenRouter、Azure OpenAI v1 与 vLLM/local Profile。
+
+后续范围：
+
+- 用户主动 interrupt。
 - Anthropic Messages。
 - Codex Responses。
 - Gemini Native client facade。
 - Provider 插件发现。
-- credential pool / rotation、单 Provider retry、健康状态和完整 failover 状态机。
+- credential pool / rotation、健康状态和完整 failover 状态机。
 
 核心学习点：
 
@@ -347,8 +354,9 @@
 
 1. Provider Transport / Runtime Foundation：已完成。
 2. Provider Streaming Request Lifecycle：已完成；streaming 位于 Client / request helper，不进入 Transport。
-3. 重新分析参考仓库最新 HEAD 后设计 Gemini Native Provider，使其复用当前 request lifecycle。
-4. 后续再分别设计 Anthropic Messages、Codex Responses 和 credential/retry/failover hardening。
+3. Provider Reliability and Targeted OpenAI-Compatible Profiles：设计完成，下一步按 Task 1 至 Task 14 实施。
+4. 完成可靠性基础后重新分析 Gemini Native Provider，使其复用当前 request lifecycle。
+5. 后续再分别设计 Anthropic Messages、Codex Responses 和 credential pool / rotation。
 
 F1 与 Provider Foundation 文档见：
 
@@ -360,6 +368,8 @@ F1 与 Provider Foundation 文档见：
 - `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`
 - `docs/plans/2026-07-24-provider-streaming-request-lifecycle-design.md`
 - `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`
+- `docs/plans/2026-07-24-provider-reliability-openai-compatible-design.md`
+- `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`
 
 暂未实现：
 

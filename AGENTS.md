@@ -58,7 +58,9 @@
 - F1A Session Identity / Persistent CWD 已完成：稳定 session runtime key、dispatch context 绑定、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 `/new` 和 compression continuation 生命周期已接入。
 - F1B Persistent Environment Snapshot 已完成：login shell bootstrap、同 session 跨 terminal 调用的 export/unset 持久化、敏感变量过滤、原子候选提交、timeout 回滚、environment cache 和 CLI session 生命周期已接入。
 - Provider Transport / Runtime Foundation 已完成：`ProviderProfile`、`ProviderRuntime`、`ProviderBinding`、原始 `ProviderClient`、按 `api_mode` 注册的 Transport、`chat_completions` 标准化，以及 `AIAgent` 持有的同步请求和最小 fallback 编排已接入。
+- Provider Streaming Request Lifecycle 已完成：独立 request helper、Chat Completions chunk accumulator、增量回调、Fake/OpenAI-compatible streaming、SSE 解析和 partial output 后的 fallback 边界已接入。
+- Provider Reliability and Targeted OpenAI-Compatible Profiles 的设计与实施计划已完成，源码尚未开始；目标包括结构化错误、retry/backoff、限流语义、stale-stream watchdog、partial continuation，以及 OpenRouter、Azure OpenAI v1 和 vLLM/local。
 - checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、并发或 segmented ToolExecutor 尚未实现。
-- Provider streaming / interrupt、Anthropic Messages、Codex Responses、Gemini Native facade、Provider 插件发现、credential pool / rotation、单 Provider retry 和完整 failover 状态机尚未实现。
+- 用户主动 interrupt、Anthropic Messages、Codex Responses、Gemini Native facade、Provider 插件发现、credential pool / rotation 和完整 failover 状态机尚未实现。
 
-F1 Session Runtime Context 与 Provider Transport / Runtime Foundation 已完成，并对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的职责边界。下一步重新分析最新版 Hermes 的 streaming request lifecycle，再形成独立设计；streaming 继续由 Agent/request helper 管理，不放入 `ProviderTransport`，也不顺带实现 Anthropic、Codex、Gemini 或 credential pool。
+F1 Session Runtime Context、Provider Transport / Runtime Foundation 与 Streaming Request Lifecycle 已完成，并对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的职责边界。下一步使用 `superpowers:executing-plans` 执行 `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`，从 Task 1 Provider 错误原语开始；源码由用户手工抄写，credential rotation 与完整 Azure Foundry 不在本批范围。
