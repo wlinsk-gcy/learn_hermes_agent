@@ -135,6 +135,8 @@
 - Modify: `src/learn_hermes_agent/providers/__init__.py`
 - Modify: `src/learn_hermes_agent/providers/runtime.py`
 - Modify: `src/learn_hermes_agent/providers/openai_compatible.py`
+- Modify: `src/learn_hermes_agent/config.py`
+- Modify: `src/learn_hermes_agent/cli/main.py`
 
 **Steps:**
 
@@ -142,17 +144,23 @@
 2. 注册 `openrouter`。
 3. 注册 `azure-openai`，要求用户提供 `/openai/v1` base URL。
 4. 注册 canonical `local` 和 alias `vllm`。
-5. 允许 local/vLLM 没有 API Key。
-6. Client 只在凭据存在时发送 Authorization。
-7. 保持 `azure` 名称未注册，为后续完整 Azure Foundry 保留迁移空间。
-8. 验证 alias、默认地址、环境变量和 Header。
+5. local/vLLM 使用必填的独立 `VLLM_API_KEY`。
+6. 配置归一化保留 `base_url` 和 `api_key_env` 未配置状态，
+   由 Profile 解析 Provider 专属默认值。
+7. `doctor` 显示 Profile 解析后的有效地址、环境变量和凭据状态。
+8. Client 只在凭据存在时发送 Authorization，作为防止空 Bearer
+   Header 的底层防御。
+9. 保持 `azure` 名称未注册，为后续完整 Azure Foundry 保留迁移空间。
+10. 验证 alias、默认地址、环境变量和 Header。
 
 **Acceptance:**
 
 - OpenRouter 使用独立 API Key 环境变量。
 - Azure OpenAI v1 不接受旧 deployment URL 作为已支持形态。
 - `provider: vllm` 解析为 canonical `local`。
-- 无 API Key 的 vLLM 请求不含 Authorization。
+- vLLM 使用独立 `VLLM_API_KEY`，缺失时在网络请求前失败。
+- 未显式配置地址和环境变量时使用当前 Profile 的默认值，
+  不继承 OpenAI 专属默认值。
 
 ### Task 7: ProviderBindingState 与 streaming 动态降级
 

@@ -106,9 +106,17 @@ Client 保留 HTTP/SSE I/O；错误分类、重试、watchdog 和 partial snapsh
 - canonical Profile：`local`
 - alias：`vllm`
 - 默认地址：`http://127.0.0.1:8000/v1`
-- API Key 可选；缺失时不发送空 Authorization
+- API Key：`VLLM_API_KEY`
+- API Key 必填；缺失时在发送 HTTP 请求前失败
 - 使用本地 stale timeout
 - 识别 vLLM 常见的上下文长度错误，不进行无意义重试
+
+Provider 专属默认地址和 API Key 环境变量由 `ProviderProfile`
+解析。配置归一化层必须保留字段“未配置”的状态，不能把
+OpenAI 的默认地址或 `OPENAI_API_KEY` 注入 OpenRouter、
+Azure OpenAI v1 或 local/vLLM。Client 仍保留“凭据不存在时
+不发送 Authorization”的防御性边界，避免未来可选认证端点
+生成空 Bearer Header。
 
 ## 组件设计
 
@@ -333,7 +341,7 @@ model:
 - 每个 binding 不超过配置的总请求次数。
 - OpenRouter upstream 429 不进行同 key 盲目重试。
 - Azure OpenAI v1 不被描述成完整 Azure Foundry。
-- vLLM 无 API Key 时不发送 Authorization。
+- vLLM 使用独立的 `VLLM_API_KEY`；缺失时在网络请求前失败。
 - stale stream 不会永久阻塞主线程。
 - 已显示文本不会被完整请求重放。
 - 残缺工具调用永远不会执行。

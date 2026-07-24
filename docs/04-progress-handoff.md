@@ -2422,7 +2422,9 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 - 确认采用独立 Provider reliability layer，不把 retry、watchdog 或 continuation 放进 Transport。
 - 确认 credential rotation 延后；当前只保留 `should_rotate_credential` 决策字段。
 - 确认 Azure 本批仅支持 Azure OpenAI v1 API Key + Chat Completions，使用 `azure-openai` 名称，不占用 Hermes 为完整 Azure Foundry 保留的 `azure` 别名。
-- 确认 vLLM 通过 canonical `local` Profile 和 `vllm` alias 接入，API Key 可选。
+- 确认 vLLM 通过 canonical `local` Profile 和 `vllm` alias 接入，
+  使用必填的独立 `VLLM_API_KEY`；Client 仍保留无凭据时不发送空
+  Authorization 的底层防御。
 - 完成设计文档与 Task 1 至 Task 14 的实施计划。
 - 校正 streaming 兼容行为：`stream=True` 返回完整响应时直接使用该响应，只对后续请求禁用 streaming，不重复发送同步请求。
 
