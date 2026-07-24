@@ -206,10 +206,10 @@ def _build_provider_binding(
         )
 
     elif runtime.api_mode == "chat_completions":
-        if not runtime.base_url or not runtime.api_key:
+        if not runtime.base_url:
             raise ValueError(
                 "OpenAI-compatible runtime requires "
-                "base_url and api_key"
+                "base_url"
             )
 
         client = OpenAICompatibleClient(
