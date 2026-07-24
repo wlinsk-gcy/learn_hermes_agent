@@ -17,6 +17,9 @@ _ALLOWED_HTTP_ERROR_HEADER_PREFIXES = (
     "x-ratelimit-",
 )
 
+_MAX_HTTP_ERROR_BODY_CHARS = 500
+_REDACTION_MARKER = "[REDACTED]"
+
 
 class OpenAICompatibleClient:
     def __init__(
@@ -124,17 +127,50 @@ class OpenAICompatibleClient:
         finally:
             exc.close()
 
-    @classmethod
+    def _sanitize_http_error_body(
+            self,
+            text: str,
+    ) -> str:
+        sanitized = text
+        secret = self._api_key
+        # 先脱敏、后截断，避免截断恰好切开密钥而泄露前缀
+        if secret:
+            replacement = (
+                _REDACTION_MARKER
+                if len(secret)
+                   >= len(_REDACTION_MARKER)
+                else "*" * len(secret) # 短密钥使用等长 *，脱敏不会扩大正文
+            )
+            sanitized = sanitized.replace(
+                secret,
+                replacement,
+            )
+
+        if (
+                len(sanitized)
+                <= _MAX_HTTP_ERROR_BODY_CHARS
+        ):
+            return sanitized
+
+        return (
+                sanitized[
+                    :_MAX_HTTP_ERROR_BODY_CHARS - 3
+                ]
+                + "..."
+        )
+
     def _provider_error_from_http_error(
-            cls,
+            self,
             exc: error.HTTPError,
     ) -> ProviderRequestError:
         status_code = exc.code
         response_headers = (
-            cls._filter_http_error_headers(exc)
+            self._filter_http_error_headers(exc)
         )
-        response_body = cls._read_http_error_body(
-            exc
+        response_body = (
+            self._sanitize_http_error_body(
+                self._read_http_error_body(exc)
+            )
         )
 
         return ProviderRequestError(
@@ -344,13 +380,3 @@ class OpenAICompatibleClient:
             )
 
         return event
-
-    @staticmethod
-    def _shorten(
-            text: str,
-            *,
-            max_length: int = 500,
-    ) -> str:
-        if len(text) <= max_length:
-            return text
-        return f"{text[:max_length]}..."
