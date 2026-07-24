@@ -235,11 +235,24 @@ class OpenAICompatibleClient:
                     http_request,
                     timeout=self._timeout_seconds,
             ) as response:
-                # yield from 逐个转交 _iter_sse_events() 产生的 chunk
+                # 逐个检查解析后的 SSE event；顶层 error 不能作为普通 chunk 交给调用方。
                 # SSE JSON 解析错误会自然向上传递。
-                yield from self._iter_sse_events(
-                    response
-                )
+                for event in self._iter_sse_events(response):
+                    if "error" in event:
+                        error_body = json.dumps(
+                            event,
+                            ensure_ascii=False,
+                        )
+                        raise ProviderRequestError(
+                            "Provider stream returned an error event",
+                            response_body=(
+                                self._sanitize_http_error_body(
+                                    error_body
+                                )
+                            ),
+                        )
+
+                    yield event
         # HTTP、网络和超时错误继续统一转换成 RuntimeError。
         except error.HTTPError as exc:
             raise (
