@@ -10,6 +10,7 @@ class ProviderProfile:
     api_mode: str
     aliases: tuple[str, ...] = ()
     default_base_url: str | None = None
+    requires_base_url: bool = False
     api_key_env: str | None = None
     requires_api_key: bool = True
     # 表示该 Provider 每次请求都要附带的固定 HTTP Header
@@ -30,6 +31,11 @@ class ProviderProfile:
         if not self.api_mode.strip():
             raise ValueError(
                 "Provider profile api_mode must not be empty"
+            )
+        if not isinstance(self.requires_base_url, bool):
+            raise TypeError(
+                "Provider profile requires_base_url "
+                "must be a boolean"
             )
 
         if not isinstance(self.requires_api_key, bool):

@@ -96,11 +96,20 @@ def _resolve_provider_runtime(
     base_url: str | None = None
     api_key: str | None = None
 
-    if profile.default_base_url is not None:
+    if (
+            profile.default_base_url is not None
+            or profile.requires_base_url
+    ):
         base_url = _get_string(
             model_config,
             "base_url",
-            profile.default_base_url,
+            profile.default_base_url or "",
+        )
+
+    if profile.requires_base_url and not base_url:
+        raise ValueError(
+            "Provider requires model.base_url: "
+            f"{profile.name!r}"
         )
 
     if profile.requires_api_key:
