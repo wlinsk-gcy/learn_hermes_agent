@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 
@@ -21,9 +21,14 @@ class FakeProviderClient:
             self,
             **request_kwargs: Any,
     ) -> object:
-        return self._next_response(
+        response = self._next_response(
             request_kwargs
         )
+
+        if request_kwargs.get("stream") is True:
+            return self._stream_response(response)
+
+        return response
 
     def _next_response(
             self,
@@ -66,6 +71,182 @@ class FakeProviderClient:
                 }
             ]
         }
+
+    def _stream_response(
+            self,
+            response: object,
+    ) -> Iterator[object]:
+        """Fake 的文本会拆成两个 chunk；tool calls 使用标准 delta 形状；最后单独发送 finish reason，usage 则使用空 choices chunk。"""
+        if not isinstance(response, dict):
+            raise RuntimeError(
+                "Fake streaming response must be "
+                "a JSON object"
+            )
+
+        choices = response.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError(
+                "Fake streaming response must "
+                "include a choice"
+            )
+
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise RuntimeError(
+                "Fake streaming choice must be "
+                "a JSON object"
+            )
+
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            raise RuntimeError(
+                "Fake streaming choice must "
+                "include a message"
+            )
+
+        model = str(
+            response.get("model")
+            or self._model
+        )
+        role = str(
+            message.get("role")
+            or "assistant"
+        )
+
+        def make_chunk(
+                delta: dict[str, Any],
+                finish_reason: object = None,
+        ) -> dict[str, Any]:
+            return {
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": delta,
+                        "finish_reason": finish_reason,
+                    }
+                ],
+            }
+
+        emitted_delta = False
+
+        reasoning = message.get(
+            "reasoning_content"
+        )
+        if reasoning is not None:
+            if not isinstance(reasoning, str):
+                raise RuntimeError(
+                    "Fake reasoning must be a string"
+                )
+
+            if reasoning:
+                yield make_chunk(
+                    {
+                        "role": role,
+                        "reasoning_content": reasoning,
+                    }
+                )
+                emitted_delta = True
+
+        content = message.get("content")
+        if content is not None:
+            if not isinstance(content, str):
+                raise RuntimeError(
+                    "Fake content must be a string or null"
+                )
+
+            if content:
+                midpoint = max(1, len(content) // 2)
+
+                for part in (
+                        content[:midpoint],
+                        content[midpoint:],
+                ):
+                    if not part:
+                        continue
+
+                    delta: dict[str, Any] = {
+                        "content": part,
+                    }
+                    if not emitted_delta:
+                        delta["role"] = role
+
+                    yield make_chunk(delta)
+                    emitted_delta = True
+
+        raw_tool_calls = message.get("tool_calls")
+        if raw_tool_calls is not None:
+            if not isinstance(raw_tool_calls, list):
+                raise RuntimeError(
+                    "Fake tool_calls must be a list"
+                )
+
+            tool_call_deltas: list[
+                dict[str, Any]
+            ] = []
+
+            for index, tool_call in enumerate(
+                    raw_tool_calls
+            ):
+                if not isinstance(tool_call, dict):
+                    raise RuntimeError(
+                        "Fake tool_call must be "
+                        "a JSON object"
+                    )
+
+                function = tool_call.get("function")
+                if not isinstance(function, dict):
+                    raise RuntimeError(
+                        "Fake tool_call must include "
+                        "a function"
+                    )
+
+                tool_call_delta: dict[str, Any] = {
+                    "index": index,
+                    "id": tool_call.get("id"),
+                    "type": (
+                            tool_call.get("type")
+                            or "function"
+                    ),
+                    "function": dict(function),
+                }
+
+                if tool_call.get(
+                        "extra_content"
+                ) is not None:
+                    tool_call_delta["extra_content"] = (
+                        tool_call["extra_content"]
+                    )
+
+                tool_call_deltas.append(
+                    tool_call_delta
+                )
+
+            if tool_call_deltas:
+                delta = {
+                    "tool_calls": tool_call_deltas,
+                }
+                if not emitted_delta:
+                    delta["role"] = role
+
+                yield make_chunk(delta)
+                emitted_delta = True
+
+        if not emitted_delta:
+            yield make_chunk({"role": role})
+
+        yield make_chunk(
+            {},
+            first_choice.get("finish_reason"),
+        )
+
+        usage = response.get("usage")
+        if usage is not None:
+            yield {
+                "model": model,
+                "choices": [],
+                "usage": usage,
+            }
 
 
 def tool_demo_client(
