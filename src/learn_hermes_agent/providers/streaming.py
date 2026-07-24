@@ -372,6 +372,64 @@ class ChatCompletionStreamAccumulator:
                     "extra_content"
                 ]
 
+    def build_response(self) -> dict[str, Any]:
+        """
+        不会返回 NormalizedResponse，而是重建普通 Chat Completions 原始字典.
+        stream chunks
+            → accumulator
+            → 完整原始 response
+            → ChatCompletionsTransport
+            → NormalizedResponse
+
+        空流与缺少 finish_reason 的残缺流会直接报错，避免把截断内容误认为完整回答
+        """
+        if not self._saw_chunk:
+            raise self._stream_error(
+                "Provider returned an empty stream"
+            )
+
+        if self._finish_reason is None:
+            raise self._stream_error(
+                "Provider stream ended without "
+                "a finish_reason"
+            )
+
+        message: dict[str, Any] = {
+            "role": self._role,
+            "content": self.content,
+        }
+
+        tool_calls = self.tool_calls
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+
+        if self.reasoning is not None:
+            message["reasoning_content"] = (
+                self.reasoning
+            )
+
+        response: dict[str, Any] = {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": message,
+                    "finish_reason": (
+                        self._finish_reason
+                    ),
+                }
+            ]
+        }
+
+        if self._model is not None:
+            response["model"] = self._model
+
+        if self._usage is not None:
+            response["usage"] = dict(
+                self._usage
+            )
+
+        return response
+
     def _stream_error(
             self,
             message: str,
