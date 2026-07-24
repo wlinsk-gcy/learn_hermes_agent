@@ -36,6 +36,7 @@ def _request_provider_completion_once(
         binding: ProviderBinding,  # 要调用哪个 Provider，以及使用哪个 Client
         request_kwargs: dict[str, Any],  # Transport 已经构造好的 model/messages/tools 等参数
         *,
+        state: ProviderBindingState,
         callbacks: ProviderStreamCallbacks | None = None,  # 不需要实时增量，走同步请求
         stream_options_disabled: bool = False,
 ) -> object:
@@ -86,14 +87,17 @@ def _request_provider_completion_once(
         **stream_kwargs
     )
 
+    if isinstance(raw_stream, dict):
+        state.streaming_disabled = True
+        return raw_stream
+
     if isinstance(
             raw_stream,
-            (dict, str, bytes, bytearray),
+            (str, bytes, bytearray),
     ):
-        # 不是 chunk 流，但可迭代，拦截
         raise ProviderStreamError(
             "Provider streaming request returned "
-            "a completed response instead of chunks"
+            "an invalid non-chunk response"
         )
     # 拦截完全不可迭代的返回值
     if not isinstance(raw_stream, Iterable):
@@ -201,6 +205,7 @@ def request_provider_completion(
             return _request_provider_completion_once(
                 binding,
                 effective_request_kwargs,
+                state=state,
                 callbacks=effective_callbacks,
                 stream_options_disabled=(
                     state.stream_options_disabled
