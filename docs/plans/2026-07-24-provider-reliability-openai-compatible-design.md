@@ -101,22 +101,25 @@ Client 保留 HTTP/SSE I/O；错误分类、重试、watchdog 和 partial snapsh
 
 本批不支持旧 deployment URL、`api-version`、Entra ID、Responses API 或 Azure Anthropic。
 
-### vLLM / local
+### Custom / Ollama / local / vLLM
 
-- canonical Profile：`local`
-- alias：`vllm`
-- 默认地址：`http://127.0.0.1:8000/v1`
-- API Key：`VLLM_API_KEY`
-- API Key 必填；缺失时在发送 HTTP 请求前失败
-- 使用本地 stale timeout
+- canonical Profile：`custom`
+- aliases：`ollama`、`local`、`vllm`
+- 不提供默认地址；用户必须配置 OpenAI-compatible base URL
+- API Key 可选；不设置固定 Key 环境变量
+- 用户显式配置 `api_key_env` 时读取对应环境变量
+- 已配置 `api_key_env` 但对应变量缺失时提前报错
+- 是否为本地端点根据实际 base URL 判断，不使用静态 Profile 标记
+- 本地 URL 使用本地 stale timeout
 - 识别 vLLM 常见的上下文长度错误，不进行无意义重试
 
 Provider 专属默认地址和 API Key 环境变量由 `ProviderProfile`
 解析。配置归一化层必须保留字段“未配置”的状态，不能把
 OpenAI 的默认地址或 `OPENAI_API_KEY` 注入 OpenRouter、
-Azure OpenAI v1 或 local/vLLM。Client 仍保留“凭据不存在时
-不发送 Authorization”的防御性边界，避免未来可选认证端点
-生成空 Bearer Header。
+Azure OpenAI v1 或 custom 端点。Custom 没有固定地址或固定
+Key 环境变量；没有配置凭据时，Client 不发送 Authorization。
+本项目 Client 不受 OpenAI SDK 的非空 Key 限制，因此不复制
+Hermes 内部的 `no-key-required` 占位值。
 
 ## 组件设计
 
@@ -331,7 +334,8 @@ model:
 4. 短 stale timeout 的一次性流验证 watchdog、attempt fence 和 streaming 降级。
 5. partial text 验证 callback 无重复、continuation 有上限。
 6. partial tool call 验证 ToolExecutor 没有收到调用。
-7. 替换 `urlopen` 验证 OpenRouter、Azure OpenAI v1 和 vLLM 请求，不发送真实网络请求。
+7. 替换 `urlopen` 验证 OpenRouter、Azure OpenAI v1 和 custom
+   OpenAI-compatible 请求，不发送真实网络请求。
 8. 回归 `doctor`、普通 fake chat、tool demo、usage 和 schema。
 9. `git diff --check`
 
@@ -341,7 +345,9 @@ model:
 - 每个 binding 不超过配置的总请求次数。
 - OpenRouter upstream 429 不进行同 key 盲目重试。
 - Azure OpenAI v1 不被描述成完整 Azure Foundry。
-- vLLM 使用独立的 `VLLM_API_KEY`；缺失时在网络请求前失败。
+- `ollama`、`local` 和 `vllm` 解析为 canonical `custom`。
+- Custom 必须显式配置 base URL，API Key 可选，且不会继承
+  `OPENAI_API_KEY`。
 - stale stream 不会永久阻塞主线程。
 - 已显示文本不会被完整请求重放。
 - 残缺工具调用永远不会执行。

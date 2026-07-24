@@ -127,7 +127,7 @@
 - retry 与 fallback 不形成乘法嵌套。
 - `TypeError`、`AssertionError` 等代码错误仍不被伪装成 Provider fallback。
 
-### Task 6: OpenRouter、Azure OpenAI v1 与 local/vLLM Profile
+### Task 6: OpenRouter、Azure OpenAI v1 与 custom 本地端点 aliases
 
 **Files:**
 
@@ -140,27 +140,30 @@
 
 **Steps:**
 
-1. 为 Profile 增加带兼容默认值的静态 Header、本地端点和可选认证字段。
+1. 为 Profile 增加带兼容默认值的静态 Header、必填地址和可选认证字段；
+   本地属性不放在 Profile，由实际 URL 判断。
 2. 注册 `openrouter`。
 3. 注册 `azure-openai`，要求用户提供 `/openai/v1` base URL。
-4. 注册 canonical `local` 和 alias `vllm`。
-5. local/vLLM 使用必填的独立 `VLLM_API_KEY`。
+4. 注册 canonical `custom`，aliases 为 `ollama`、`local`、`vllm`。
+5. Custom 不提供默认地址或固定 Key 环境变量；地址必填，API Key 可选；
+   显式配置 `api_key_env` 后，对应环境变量必须存在。
 6. 配置归一化保留 `base_url` 和 `api_key_env` 未配置状态，
    由 Profile 解析 Provider 专属默认值。
 7. `doctor` 显示 Profile 解析后的有效地址、环境变量和凭据状态。
 8. Client 只在凭据存在时发送 Authorization，作为防止空 Bearer
    Header 的底层防御。
 9. 保持 `azure` 名称未注册，为后续完整 Azure Foundry 保留迁移空间。
-10. 验证 alias、默认地址、环境变量和 Header。
+10. 验证 alias、必填地址、可选环境变量、凭据隔离和 Header。
 
 **Acceptance:**
 
 - OpenRouter 使用独立 API Key 环境变量。
 - Azure OpenAI v1 不接受旧 deployment URL 作为已支持形态。
-- `provider: vllm` 解析为 canonical `local`。
-- vLLM 使用独立 `VLLM_API_KEY`，缺失时在网络请求前失败。
-- 未显式配置地址和环境变量时使用当前 Profile 的默认值，
-  不继承 OpenAI 专属默认值。
+- `provider: ollama`、`local`、`vllm` 均解析为 canonical `custom`。
+- Custom 未显式配置地址时在网络请求前失败。
+- Custom API Key 可选；没有凭据时不发送 Authorization，也不继承
+  OpenAI 或 OpenRouter 的凭据。
+- Custom 显式配置 `api_key_env` 但环境变量缺失时提前失败。
 
 ### Task 7: ProviderBindingState 与 streaming 动态降级
 
@@ -224,7 +227,8 @@
 4. 成功完成流时清零 `consecutive_stale_streams`。
 5. stale 时增加计数。
 6. 达到阈值后禁用该 binding 的 streaming。
-7. local/vLLM 使用本地 timeout，云端使用云端 timeout。
+7. 根据 binding 的实际 base URL 判断本地端点；本地 URL 使用本地
+   timeout，远程 custom URL 使用云端 timeout。
 
 **Acceptance:**
 

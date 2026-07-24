@@ -269,7 +269,7 @@
 
 - 结构化 Provider 错误、限流分类和有界 retry/backoff。
 - stale-stream watchdog、attempt fence 和 partial continuation。
-- OpenRouter、Azure OpenAI v1 与 vLLM/local Profile。
+- OpenRouter、Azure OpenAI v1 与 custom/Ollama/local/vLLM Profile。
 
 后续范围：
 
