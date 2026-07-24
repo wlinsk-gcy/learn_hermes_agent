@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -9,6 +10,7 @@ from learn_hermes_agent.providers.transports.base import (
 )
 from learn_hermes_agent.providers.types import (
     NormalizedResponse,
+    ToolCall,
 )
 
 
@@ -149,3 +151,64 @@ class ChatCompletionsTransport(ProviderTransport):
             message.get("content") or ""
         )
         return payload
+
+    def _parse_tool_calls(
+            self,
+            value: object,
+    ) -> list[ToolCall] | None:
+        """把 Provider 的原始 tool call 转成统一 ToolCall。如果某些兼容服务返回字典形式的 arguments，这里会将其转换成 JSON 字符串"""
+        if value is None:
+            return None
+
+        if not isinstance(value, list):
+            raise RuntimeError(
+                "Provider message tool_calls must be a list"
+            )
+
+        result: list[ToolCall] = []
+
+        for index, item in enumerate(value, start=1):
+            if not isinstance(item, dict):
+                raise RuntimeError(
+                    "Provider message tool_calls "
+                    "must contain objects"
+                )
+
+            function = item.get("function")
+            if not isinstance(function, dict):
+                raise RuntimeError(
+                    "Provider tool_call must include "
+                    "a function object"
+                )
+
+            name = str(
+                function.get("name") or ""
+            ).strip()
+            if not name:
+                raise RuntimeError(
+                    "Provider tool_call function "
+                    "must include a name"
+                )
+
+            arguments = function.get("arguments", "{}")
+            if isinstance(arguments, (dict, list)):
+                arguments = json.dumps(arguments)
+            else:
+                arguments = str(arguments or "{}")
+
+            raw_id = item.get("id")
+            tool_call_id = (
+                str(raw_id)
+                if raw_id
+                else f"call_{index}"
+            )
+
+            result.append(
+                ToolCall(
+                    id=tool_call_id,
+                    name=name,
+                    arguments=arguments,
+                )
+            )
+
+        return result
