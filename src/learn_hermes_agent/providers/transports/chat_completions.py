@@ -11,6 +11,7 @@ from learn_hermes_agent.providers.transports.base import (
 from learn_hermes_agent.providers.types import (
     NormalizedResponse,
     ToolCall,
+    Usage,
 )
 
 
@@ -212,3 +213,45 @@ class ChatCompletionsTransport(ProviderTransport):
             )
 
         return result
+
+    def _parse_usage(
+            self,
+            value: object,
+    ) -> Usage | None:
+        """将 Provider usage 转成统一 Usage"""
+        if not isinstance(value, dict):
+            return None
+
+        cached_tokens = 0
+        prompt_details = value.get(
+            "prompt_tokens_details"
+        )
+
+        if isinstance(prompt_details, dict):
+            # 从 OpenAI 风格的 prompt_tokens_details.cached_tokens 提取缓存 token
+            cached_tokens = self._get_non_negative_int(
+                prompt_details.get("cached_tokens")
+            )
+
+        return Usage(
+            prompt_tokens=self._get_non_negative_int(
+                value.get("prompt_tokens")
+            ),
+            completion_tokens=self._get_non_negative_int(
+                value.get("completion_tokens")
+            ),
+            total_tokens=self._get_non_negative_int(
+                value.get("total_tokens")
+            ),
+            cached_tokens=cached_tokens,
+        )
+
+    @staticmethod
+    def _get_non_negative_int(value: object) -> int:
+        """缺失、负数和错误类型按 0 处理"""
+        # 单独排除 bool，因为 Python 中 bool 是 int 的子类
+        if isinstance(value, bool):
+            return 0
+        if isinstance(value, int) and value >= 0:
+            return value
+        return 0
