@@ -2238,6 +2238,94 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 
 重新分析最新版 Hermes 的 Provider streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，形成独立设计与实施计划；F1B 不提前实现任何 Provider 代码。
 
+## 2026-07-24 Provider Transport / Runtime Foundation 已完成
+
+### 本次目标
+
+把旧 `ProviderTransport.complete()` 黑盒拆成 Hermes 风格的 Profile、Runtime、Client、API-mode Transport 和 Agent orchestration，同时保持同步 CLI、tool demo、usage 和最小 fallback 行为。
+
+### 已完成
+
+- 新增不可变 `ProviderProfile`，在 `providers/__init__.py` 注册 `fake`、`openai-compatible` 与 `openai` alias。
+- 新增 `ProviderClient.create(**request_kwargs) -> object` 原始请求协议。
+- 新增不可变 `ProviderRuntime` 与 `ProviderBinding`；API key 不进入 Runtime repr。
+- 新增 `providers/transports/`：
+  - Hermes 风格 `ProviderTransport` ABC。
+  - 按 `api_mode` 注册和获取 Transport。
+  - `ChatCompletionsTransport` 消息/工具转换、kwargs 构造、tool calls、finish reason 和 usage 标准化。
+- `OpenAICompatibleClient` 只负责 JSON HTTP I/O、认证、timeout 和网络错误映射，不导入 `ChatMessage` 或 `NormalizedResponse`。
+- `FakeProviderClient` 与 tool demo 返回原始 Chat Completions 字典，并经过同一个 Transport。
+- runtime builder 按配置生成 primary/fallback `ProviderBinding` 列表；`openai` alias 规范化为 `openai-compatible`。
+- `AIAgent` 按 `api_mode` 缓存 Transport，并拥有同步请求、响应校验/标准化、最小 fallback 和可观察状态。
+- CLI 已从 `build_provider_transport()` 切换到 `build_provider_bindings()`。
+- 删除旧 `FallbackProviderTransport`、`FakeProviderTransport`、`OpenAICompatibleProviderTransport`、`tool_demo_provider()` 与 `build_provider_transport()` 运行路径；`providers/base.py` 中的旧 Protocol 仅作为全注释学习笔记保留。
+
+### 修改文件
+
+- `src/learn_hermes_agent/providers/__init__.py`
+- `src/learn_hermes_agent/providers/base.py`
+- `src/learn_hermes_agent/providers/client.py`
+- `src/learn_hermes_agent/providers/runtime.py`
+- `src/learn_hermes_agent/providers/openai_compatible.py`
+- `src/learn_hermes_agent/providers/fake.py`
+- `src/learn_hermes_agent/providers/transports/__init__.py`
+- `src/learn_hermes_agent/providers/transports/base.py`
+- `src/learn_hermes_agent/providers/transports/chat_completions.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `src/learn_hermes_agent/cli/main.py`
+- `AGENTS.md`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-design.md`
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`
+
+### 对照的 Hermes 源码
+
+- 参考 HEAD：`477c08b44766ace8b890faa72bf82ecbcf2b3ba8`
+- `providers/base.py`
+- `providers/__init__.py`
+- `hermes_cli/runtime_provider.py`
+- `agent/agent_init.py`
+- `agent/conversation_loop.py`
+- `agent/chat_completion_helpers.py`
+- `agent/transports/base.py`
+- `agent/transports/__init__.py`
+- `agent/transports/chat_completions.py`
+- `agent/transports/anthropic.py`
+- `agent/transports/codex.py`
+
+### 验证方式
+
+- `uv run python -m compileall -q src` 退出码为 0。
+- Profile alias、Runtime 密钥 repr、Transport ABC/registry、Chat Completions 消息/tool call/usage 标准化均通过一次性脚本验证。
+- OpenAI-compatible Client 通过替换 `urlopen` 验证 URL、Authorization、timeout、JSON body 和原始响应边界，没有发出真实网络请求。
+- Agent-owned primary/fallback 顺序、usage snapshot、全部失败聚合和 `TypeError` 不被吞掉均通过。
+- 隔离 `LEARN_HERMES_HOME` 下的 doctor、九工具 definitions、默认 fake chat 和 tool demo 均通过；tool demo 保持 `user -> assistant(tool_calls) -> tool -> assistant` 且 `tool_call_id` 配对。
+- AST 检查确认旧 Provider 类/工厂运行面为零，Transport 不含网络/凭据，HTTP Client 不依赖 Agent 消息或规范化类型。
+- 未新增测试文件；`git diff --check` 无 whitespace error，工作区仅保留既有未跟踪 `sandbox/`。
+
+### 设计结论
+
+- Profile 按 Provider 品牌声明静态属性；Transport 按 API 协议分类，两者不能混为一层。
+- Transport 只负责 `convert_messages -> convert_tools -> build_kwargs -> validate/normalize_response`，不拥有 Client、凭据、网络、streaming、interrupt、retry 或 fallback。
+- 本项目用 `ProviderBinding(runtime, client)` 打包候选端点；请求选择和 fallback 仍归 `AIAgent`，符合 Hermes 的职责意图。
+- Fake 不能绕过标准化层直接返回 `NormalizedResponse`，否则无法验证真实 Provider 主链。
+- 当前缺失 primary API key 会在 Runtime 构造阶段 fail-fast，不进入请求期 fallback；这是本批保留的配置错误语义，后续 credential/failover 设计需重新评估。
+- 当前只支持同步 `chat_completions`；Transport registry 是后续 API mode 的扩展点，不代表其他模式已经实现。
+
+### 尚未实现
+
+- streaming / interrupt 和流式事件。
+- Anthropic Messages、Codex Responses、Gemini Native client facade。
+- Provider 插件发现。
+- credential pool / rotation、单 Provider retry、健康状态和完整 failover 状态机。
+- reasoning replay、thought signature 和完整 prompt caching。
+
+### 下一步
+
+开始下一批前重新分析最新版 Hermes HEAD 的 streaming request lifecycle、request helper、interrupt 和 retry 边界，形成独立设计与实施计划。streaming 继续由 `AIAgent` / request helper 管理，不放入 `ProviderTransport`；本轮不直接开始 Anthropic、Codex、Gemini 或 credential pool。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

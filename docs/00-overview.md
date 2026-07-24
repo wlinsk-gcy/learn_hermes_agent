@@ -68,7 +68,7 @@ CLI / Gateway / ACP / TUI
 
 ## 当前实现进度
 
-截至 2026-07-23，学习项目已经完成：
+截至 2026-07-24，学习项目已经完成：
 
 - Phase 0 至 Phase 8 的最小可运行版本。
 - Phase 9：最小 Provider Runtime、OpenAI-compatible provider、规范化 response 和 fallback chain。
@@ -80,6 +80,7 @@ CLI / Gateway / ACP / TUI
 - Phase 10 Batch 6：Local Foreground Terminal，包括本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、ANSI 清理、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint。
 - F1A：Session Identity / Persistent CWD，包括稳定 session runtime key、dispatch effective context 绑定、线程安全的进程内 cwd record、命令结束 cwd marker、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
 - F1B：Persistent Environment Snapshot，包括 login shell bootstrap、同 session 跨调用的 `export` / `unset` 持久化、敏感变量过滤、原子候选提交、timeout 不提交、environment cache，以及 `/new` / compression continuation 生命周期。
+- Provider Transport / Runtime Foundation：增加静态 `ProviderProfile`、不可变 `ProviderRuntime`、`ProviderBinding`、原始 `ProviderClient`、按 `api_mode` 注册的 Transport 和 `chat_completions` 标准化，并把同步请求、Transport cache 和最小 fallback 编排迁移到 `AIAgent`。
 
 Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
@@ -92,7 +93,21 @@ ToolRegistry v2
 
 `model_tools.py` 继续负责 Registry dispatch、安全 preflight、effective context 解析和 CLI 兼容；模型不能执行被 `check_fn` 隐藏、未出现在本轮 definitions 中的已注册工具。checkpoint 是 `AIAgent` 持有的透明基础设施，不是 Registry 工具；写工具和 workspace 内 destructive terminal 只在安全 preflight 通过后、handler 前创建 best-effort checkpoint。当前 terminal 只支持本地前台 Bash 命令，并已支持同一进程、同一 session 内的跨调用 cwd 和 exported environment；approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、checkpoint CLI、rollback UX、并发或 segmented 工具执行，以及 Hermes 完整 registry 动态能力仍未实现。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A 与 F1B 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session cwd、environment snapshot、terminal cache 和 CLI session 生命周期设计意图；Windows 快照使用用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`，并由 Python 控制最终原子提交，避免 timeout 后仍运行的 Bash wrapper 发布候选。下一步重新分析最新版 Hermes 的 Provider 链路并建立独立设计，当前不提前实现 approval UI、background/process、PTY 或 remote backend。
+Provider 主链现在是：
+
+```text
+ProviderProfile
+  -> ProviderRuntime
+  -> ProviderBinding(runtime, client)
+  -> AIAgent
+  -> ProviderTransport(api_mode)
+  -> ProviderClient.create()
+  -> NormalizedResponse
+```
+
+Transport 只负责消息、工具、请求参数和响应格式，不持有 model、base URL、API key、timeout、Client、streaming 或 retry。Fake 与 OpenAI-compatible Client 都返回原始 Chat Completions 数据并经过同一个 Transport；fallback 顺序和状态由 `AIAgent` 管理。
+
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A、F1B 与 Provider Foundation 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session runtime 和 Provider/Transport 职责意图。下一步重新分析最新版 Hermes 的 streaming request lifecycle 并建立独立设计；当前不实现 Anthropic、Codex Responses、Gemini Native、credential pool、approval UI、background/process、PTY 或 remote backend。
 
 ## 文档地图
 
@@ -115,3 +130,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Bat
 - `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`：F1A Session Runtime CWD 实施计划。
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-design.md`：F1B Persistent Environment Snapshot 设计。
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`：F1B Persistent Environment Snapshot 实施计划。
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-design.md`：Provider Transport / Runtime Foundation 设计。
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`：Provider Transport / Runtime Foundation 实施计划。

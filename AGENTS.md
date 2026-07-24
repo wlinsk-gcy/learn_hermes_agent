@@ -43,7 +43,7 @@
 
 ## 当前状态
 
-截至 2026-07-23：
+截至 2026-07-24：
 
 - 已重新分析最新版 Hermes 源码及 Registry / ToolExecutor 承重链路。
 - 已建立中文路线图和 session 交接文档。
@@ -57,6 +57,8 @@
 - Phase 10 Batch 6 Local Foreground Terminal 已完成：本地 Bash/Git Bash 前台执行、timeout、进程树清理、有界输出、Provider secret 过滤、terminal tool 注册，以及 workspace 内 destructive terminal checkpoint 已实现。
 - F1A Session Identity / Persistent CWD 已完成：稳定 session runtime key、dispatch context 绑定、进程内 cwd record、terminal/file/checkpoint cwd 一致性，以及 `/new` 和 compression continuation 生命周期已接入。
 - F1B Persistent Environment Snapshot 已完成：login shell bootstrap、同 session 跨 terminal 调用的 export/unset 持久化、敏感变量过滤、原子候选提交、timeout 回滚、environment cache 和 CLI session 生命周期已接入。
+- Provider Transport / Runtime Foundation 已完成：`ProviderProfile`、`ProviderRuntime`、`ProviderBinding`、原始 `ProviderClient`、按 `api_mode` 注册的 Transport、`chat_completions` 标准化，以及 `AIAgent` 持有的同步请求和最小 fallback 编排已接入。
 - checkpoint CLI、rollback UX、approval UI、background/process、PTY、跨进程 cwd/env 恢复、远程 backend、并发或 segmented ToolExecutor 尚未实现。
+- Provider streaming / interrupt、Anthropic Messages、Codex Responses、Gemini Native facade、Provider 插件发现、credential pool / rotation、单 Provider retry 和完整 failover 状态机尚未实现。
 
-F1 Session Runtime Context 的 F1A 与 F1B 已完成，并对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`。下一步重新分析最新版 Hermes 的 Provider streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再建立独立设计；当前不提前实现 approval UI、background/process、PTY 或 remote backend。
+F1 Session Runtime Context 与 Provider Transport / Runtime Foundation 已完成，并对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的职责边界。下一步重新分析最新版 Hermes 的 streaming request lifecycle，再形成独立设计；streaming 继续由 Agent/request helper 管理，不放入 `ProviderTransport`，也不顺带实现 Anthropic、Codex、Gemini 或 credential pool。

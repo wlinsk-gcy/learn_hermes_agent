@@ -10,11 +10,12 @@
 2. 我们复刻哪些接口和行为？
 3. 如何不用大规模测试也能观察它是正确的？
 
-当前进度截至 2026-07-23：
+当前进度截至 2026-07-24：
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
-- F1A Session Identity / Persistent CWD 与 F1B Persistent Environment Snapshot 已完成；下一步重新对齐最新版 Hermes 的 Provider 链路并建立独立设计。
+- F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot 与 Provider Transport / Runtime Foundation 已完成。
+- 下一步重新对齐最新版 Hermes 的 streaming request lifecycle，并建立独立设计。
 
 ## Phase 0：项目基础与约定
 
@@ -42,7 +43,7 @@
 
 ## Phase 1：最小 AIAgent 和 provider 抽象
 
-状态：已完成最小版。当前只实现 fake provider；OpenAI-compatible provider 延后到 Phase 9 的 provider runtime 扩展。
+状态：历史最小版已完成，并已在 Phase 9 与 2026-07-24 Provider Foundation 中升级为 Profile / Runtime / Client / Transport 分层。
 
 目标：跑通“用户输入 -> provider -> assistant 输出”的最小闭环。
 
@@ -51,8 +52,8 @@
 - `AIAgent` 类。
 - `run_conversation(user_message, conversation_history=None)`。
 - OpenAI message 格式。
-- `ProviderTransport` 协议。
-- `FakeProviderTransport`，用于本地无 API key 验证。
+- 初始 `ProviderTransport.complete()` Protocol 和 `FakeProviderTransport` 已完成教学使命，并在 Provider Foundation 中移除。
+- 当前 fake 使用原始 `FakeProviderClient`，与 OpenAI-compatible Client 共用 `ChatCompletionsTransport`。
 
 核心学习点：
 
@@ -245,29 +246,40 @@
 
 ## Phase 9：Provider Runtime 扩展
 
+状态：最小版与 Provider Transport / Runtime Foundation 已完成；高级 Provider 能力待后续批次。
+
 目标：把单一 OpenAI-compatible provider 扩展为 Hermes 风格 runtime。
 
-实现内容：
+已实现：
 
 - provider 配置解析。
-- runtime provider resolver。
-- OpenAI-compatible streaming。
-- Anthropic adapter。
-- Gemini adapter。
-- Codex Responses adapter 的简化版。
+- 内置 `ProviderProfile` 与 alias registry。
+- 不可变 `ProviderRuntime` 和 `ProviderBinding` chain。
+- 原始 OpenAI-compatible / Fake `ProviderClient`。
+- 按 `api_mode` 注册的 Transport ABC 与 `chat_completions` Transport。
 - usage normalization。
-- fallback chain。
+- `AIAgent` 持有的同步请求、Transport cache 和最小 fallback chain。
+
+尚未实现：
+
+- streaming / interrupt。
+- Anthropic Messages。
+- Codex Responses。
+- Gemini Native client facade。
+- Provider 插件发现。
+- credential pool / rotation、单 Provider retry、健康状态和完整 failover 状态机。
 
 核心学习点：
 
 - agent loop 不应该知道每个 provider 的原始响应结构。
-- provider 差异通过 normalize_response 收敛。
+- Provider 品牌配置由 Profile/Runtime 解析，API 协议差异通过 Transport 收敛。
+- Transport 不拥有 Client、凭据、网络、streaming、interrupt、retry 或 fallback。
 
 验收：
 
-- 至少两个 provider 可切换。
-- streaming 和非 streaming 都能返回同一规范结构。
-- fallback 能在 fake provider 失败时切换。
+- fake 与 OpenAI-compatible 请求经过同一个 `chat_completions` 标准化层。
+- primary 失败时 `AIAgent` 能按 Binding 顺序切换到 fake fallback。
+- CLI、tool demo、usage snapshot 和工具消息链保持可运行。
 
 ## Phase 10：安全、审批和执行环境
 
@@ -324,16 +336,20 @@
   - Windows 快照位于用户级 `%LOCALAPPDATA%\learn_hermes_agent\cache\terminal`；最终发布由 Python 控制，以适配 timeout 后 Bash wrapper 仍可能继续运行的行为。
   - 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8`。
 
-已确认的下一步顺序：
+已确认的后续顺序：
 
-1. Provider 方向：重新对齐最新版 Hermes 的 streaming contract、Anthropic、Gemini、Codex Responses 和 credential/failover 链路，再形成独立设计。
+1. Provider Transport / Runtime Foundation：已完成。
+2. 重新对齐最新版 Hermes 的 streaming request lifecycle，形成独立设计；streaming 不进入 Transport。
+3. 在 streaming 生命周期稳定后，依次设计 Anthropic Messages、Codex Responses、Gemini Native facade 和 credential/retry/failover hardening。
 
-F1 总体设计与已完成的 F1A / F1B 文档见：
+F1 与 Provider Foundation 文档见：
 
 - `docs/plans/2026-07-22-f1-session-runtime-context-design.md`
 - `docs/plans/2026-07-22-f1a-session-runtime-cwd-plan.md`
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-design.md`
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-design.md`
+- `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`
 
 暂未实现：
 
