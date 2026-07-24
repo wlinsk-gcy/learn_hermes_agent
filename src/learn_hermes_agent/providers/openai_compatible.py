@@ -105,6 +105,42 @@ class OpenAICompatibleClient:
                 "Provider returned invalid JSON"
             ) from exc
 
+    def _iter_stream_response(
+            self,
+            http_request: request.Request,
+    ) -> Iterator[dict[str, Any]]:
+        try:
+            # 因为函数包含 yield，调用它时不会立即请求网络，开始迭代时才会执行 urlopen()
+            # with 保证流结束、报错或生成器被关闭时，HTTP response 都会关闭。
+            with request.urlopen(
+                    http_request,
+                    timeout=self._timeout_seconds,
+            ) as response:
+                # yield from 逐个转交 _iter_sse_events() 产生的 chunk
+                # SSE JSON 解析错误会自然向上传递。
+                yield from self._iter_sse_events(
+                    response
+                )
+        # HTTP、网络和超时错误继续统一转换成 RuntimeError。
+        except error.HTTPError as exc:
+            error_body = exc.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+            raise RuntimeError(
+                "Provider request failed with HTTP "
+                f"{exc.code}: "
+                f"{self._shorten(error_body)}"
+            ) from exc
+        except error.URLError as exc:
+            raise RuntimeError(
+                f"Provider request failed: {exc.reason}"
+            ) from exc
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "Provider request timed out"
+            ) from exc
+
     @staticmethod
     def _iter_sse_events(
             lines: Iterable[bytes],
