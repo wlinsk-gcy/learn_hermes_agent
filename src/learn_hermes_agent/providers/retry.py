@@ -191,3 +191,47 @@ def jittered_backoff(
         nominal_delay + jitter,
         float(policy.backoff_cap_seconds),
     )
+
+
+def retry_delay(
+        retry_number: int,
+        *,
+        policy: RetryPolicy,
+        retry_after: str | None = None,
+        random_fn: Callable[[], float] = random.random,
+        now: datetime | None = None,
+) -> float:
+    """
+    选择 Retry-After 或本地 jitter backoff。
+    决策顺序：
+
+    有效 Retry-After
+    → 优先使用
+    → 但不能超过 backoff_cap_seconds
+
+    没有或无法解析 Retry-After
+    → 使用本地 jittered_backoff
+
+    此处故意不调用 sleep()，因为等待行为属于 request lifecycle。
+    """
+    if not isinstance(policy, RetryPolicy):
+        raise TypeError(
+            "policy must be a RetryPolicy"
+        )
+
+    retry_after_seconds = parse_retry_after(
+        retry_after,
+        now=now,
+    )
+
+    if retry_after_seconds is not None:
+        return min(
+            retry_after_seconds,
+            float(policy.backoff_cap_seconds),
+        )
+
+    return jittered_backoff(
+        retry_number,
+        policy=policy,
+        random_fn=random_fn,
+    )
