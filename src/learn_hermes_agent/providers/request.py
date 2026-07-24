@@ -154,6 +154,22 @@ def request_provider_completion(
         raise TypeError(
             "state must be a ProviderBindingState"
         )
+    effective_request_kwargs = request_kwargs
+    effective_callbacks = callbacks
+
+    if state.streaming_disabled:
+        effective_request_kwargs = dict(
+            request_kwargs
+        )
+        effective_request_kwargs.pop(
+            "stream",
+            None,
+        )
+        effective_request_kwargs.pop(
+            "stream_options",
+            None,
+        )
+        effective_callbacks = None
     if retry_policy is None:
         policy = RetryPolicy()
     elif not isinstance(retry_policy, RetryPolicy):
@@ -171,8 +187,8 @@ def request_provider_completion(
         try:
             return _request_provider_completion_once(
                 binding,
-                request_kwargs,
-                callbacks=callbacks,
+                effective_request_kwargs,
+                callbacks=effective_callbacks,
             )
         # 只捕获结构化 Provider 错误
         except ProviderRequestError as exc:
