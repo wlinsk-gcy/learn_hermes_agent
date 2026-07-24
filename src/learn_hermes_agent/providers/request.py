@@ -12,14 +12,14 @@ from learn_hermes_agent.providers.streaming import (
     ProviderStreamError,
 )
 
-
-def request_provider_completion(
+# 每次创建独立的流式 accumulator
+def _request_provider_completion_once(
         binding: ProviderBinding,  # 要调用哪个 Provider，以及使用哪个 Client
         request_kwargs: dict[str, Any],  # Transport 已经构造好的 model/messages/tools 等参数
         *,
         callbacks: ProviderStreamCallbacks | None = None,  # 不需要实时增量，走同步请求
 ) -> object:
-    """Provider 的单次请求执行器"""
+    """执行一次 Provider 请求。"""
     if callbacks is None:
         return binding.client.create(
             **request_kwargs
@@ -103,6 +103,21 @@ def request_provider_completion(
                 close()
             except Exception:
                 pass
+
+# 公共函数以后负责 retry、sleep 和 attempt 预算
+# 同步与流式不会各自复制一套重试循环
+def request_provider_completion(
+        binding: ProviderBinding,
+        request_kwargs: dict[str, Any],
+        *,
+        callbacks: ProviderStreamCallbacks | None = None,
+) -> object:
+    """执行单个 binding 的 Provider 请求生命周期。"""
+    return _request_provider_completion_once(
+        binding,
+        request_kwargs,
+        callbacks=callbacks,
+    )
 
 
 # __all__ 表示该模块对外公开 request_provider_completion
