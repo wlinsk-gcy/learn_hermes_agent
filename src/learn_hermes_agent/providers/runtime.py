@@ -52,9 +52,9 @@ class ProviderRuntime:
         if (
                 isinstance(self.timeout_seconds, bool)
                 or not isinstance(
-            self.timeout_seconds,
-            (int, float),
-        )
+                    self.timeout_seconds,
+                    (int, float),
+                )
                 or self.timeout_seconds <= 0
         ):
             raise ValueError(
@@ -71,6 +71,72 @@ class ProviderBinding:
 
 
 OPENAI_COMPATIBLE_PROVIDERS = frozenset({"openai-compatible", "openai"})
+
+
+def _resolve_provider_runtime(
+        model_config: dict[str, Any],
+) -> ProviderRuntime:
+    requested_provider = _get_string(
+        model_config,
+        "provider",
+        "fake",
+    ).lower()
+    # 按名称/别名取得 ProviderProfile
+    profile = get_provider_profile(
+        requested_provider
+    )
+    # 读取配置和环境变量
+    model = _get_string(
+        model_config,
+        "default",
+        "fake-basic",
+    )
+
+    timeout_seconds = _get_positive_float(
+        model_config,
+        "timeout_seconds",
+        60.0,
+    )
+
+    base_url: str | None = None
+    api_key: str | None = None
+
+    if profile.default_base_url is not None:
+        base_url = _get_string(
+            model_config,
+            "base_url",
+            profile.default_base_url,
+        )
+
+    if profile.requires_api_key:
+        default_api_key_env = (
+                profile.api_key_env or ""
+        )
+        api_key_env = _get_string(
+            model_config,
+            "api_key_env",
+            default_api_key_env,
+        )
+        api_key = os.environ.get(
+            api_key_env,
+            "",
+        )
+
+        if not api_key:
+            raise ValueError(
+                "Missing API key env var for "
+                f"provider {requested_provider!r}: "
+                f"{api_key_env}"
+            )
+    # 生成不可变 ProviderRuntime
+    return ProviderRuntime(
+        provider=profile.name,
+        model=model,
+        api_mode=profile.api_mode,
+        base_url=base_url,
+        api_key=api_key,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def build_provider_transport(config: dict[str, Any], *, tool_demo: bool = False) -> ProviderTransport:
