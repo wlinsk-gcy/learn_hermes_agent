@@ -95,7 +95,13 @@ class AIAgent:
                 definition["function"]["name"]
                 for definition in tools
             }
-            normalized_response = self.provider.complete(request_messages, tools=tools)
+            # AIAgent -> Transport 构造请求 -> Client 执行 I/O -> Transport 标准化响应
+            normalized_response = (
+                self._complete_with_fallback(
+                    request_messages,
+                    tools=tools,
+                )
+            )
             self._record_provider_response(normalized_response)
             assistant_response = self._assistant_message_from_response(normalized_response)
             self._validate_assistant_message(assistant_response)
