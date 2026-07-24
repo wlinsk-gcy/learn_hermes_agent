@@ -75,6 +75,11 @@ class ChatCompletionStreamAccumulator:
         self._usage: dict[str, Any] | None = None
         self._saw_chunk = False
         self._text_emitted = False
+        self._tool_calls: dict[
+            int,
+            dict[str, Any],
+        ] = {}
+        self._tool_call_started: set[int] = set()
 
     @property
     def content(self) -> str | None:
@@ -227,6 +232,145 @@ class ChatCompletionStreamAccumulator:
                         reasoning
                 ):
                     self._text_emitted = True
+
+        tool_calls = delta.get("tool_calls")
+        if tool_calls is not None:
+            self._add_tool_call_deltas(tool_calls)
+
+    @property
+    def tool_calls(self) -> list[dict[str, Any]] | None:
+        if not self._tool_calls:
+            return None
+
+        result: list[dict[str, Any]] = []
+
+        for index in sorted(self._tool_calls):
+            entry = self._tool_calls[index]
+            tool_call = {
+                "id": entry["id"],
+                "type": entry["type"],
+                "function": dict(entry["function"]),
+            }
+
+            if entry.get("extra_content") is not None:
+                tool_call["extra_content"] = entry[
+                    "extra_content"
+                ]
+
+            result.append(tool_call)
+
+        return result
+
+    def _add_tool_call_deltas(
+            self,
+            value: object,
+    ) -> None:
+        if not isinstance(value, list):
+            raise self._stream_error(
+                "Provider stream tool_calls must be a list"
+            )
+
+        for item in value:
+            if not isinstance(item, dict):
+                raise self._stream_error(
+                    "Provider stream tool_calls "
+                    "must contain JSON objects"
+                )
+
+            raw_index = item.get("index", 0)
+            if (
+                    isinstance(raw_index, bool)
+                    or not isinstance(raw_index, int)
+                    or raw_index < 0
+            ):
+                raise self._stream_error(
+                    "Provider stream tool_call index "
+                    "must be a non-negative integer"
+                )
+
+            entry = self._tool_calls.setdefault(
+                raw_index,
+                {
+                    "id": "",
+                    "type": "function",
+                    "function": {
+                        "name": "",
+                        "arguments": "",
+                    },
+                    "extra_content": None,
+                },
+            )
+
+            raw_id = item.get("id")
+            if raw_id is not None:
+                if (
+                        isinstance(raw_id, bool)
+                        or not isinstance(raw_id, (str, int))
+                ):
+                    raise self._stream_error(
+                        "Provider stream tool_call id "
+                        "must be a string or integer"
+                    )
+
+                tool_call_id = str(raw_id)
+                if tool_call_id:
+                    entry["id"] = tool_call_id
+
+            raw_type = item.get("type")
+            if raw_type is not None:
+                if not isinstance(raw_type, str):
+                    raise self._stream_error(
+                        "Provider stream tool_call type "
+                        "must be a string"
+                    )
+                if raw_type:
+                    entry["type"] = raw_type
+
+            function = item.get("function")
+            if function is not None:
+                if not isinstance(function, dict):
+                    raise self._stream_error(
+                        "Provider stream tool_call function "
+                        "must be a JSON object"
+                    )
+
+                name = function.get("name")
+                if name is not None:
+                    if not isinstance(name, str):
+                        raise self._stream_error(
+                            "Provider stream tool name "
+                            "must be a string"
+                        )
+
+                    if name:
+                        # 工具名称是完整标识符，不能使用 +=
+                        # 因为名称通常由 Provider 重复发送完整值
+                        entry["function"]["name"] = name
+
+                        if raw_index not in self._tool_call_started:
+                            self._tool_call_started.add(
+                                raw_index
+                            )
+                            self._callbacks.emit_tool_call_started(
+                                name
+                            )
+
+                arguments = function.get("arguments")
+                if arguments is not None:
+                    if not isinstance(arguments, str):
+                        raise self._stream_error(
+                            "Provider stream tool arguments "
+                            "must be a string"
+                        )
+                    # 参数才是真正需要跨 chunk 拼接的字符串
+                    entry["function"][
+                        "arguments"
+                    ] += arguments
+
+            if item.get("extra_content") is not None:
+                entry["extra_content"] = item[
+                    "extra_content"
+                ]
 
     def _stream_error(
             self,
