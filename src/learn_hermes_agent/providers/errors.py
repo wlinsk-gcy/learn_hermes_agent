@@ -60,6 +60,16 @@ _REQUEST_VALIDATION_PATTERNS = (
     "unsupported_parameter",
 )
 
+_CONTEXT_OVERFLOW_PATTERNS = (
+    "context length",
+    "maximum context",
+    "exceeds the max_model_len",
+    "max_model_len",
+    "prompt length",
+    "input is too long",
+    "maximum model length",
+)
+
 
 # 采用与 Hermes 相同的 Enum 和小写成员名。暂时只定义当前可靠性链需要的分类，不复制其他 Provider 专有类型
 class ProviderErrorKind(Enum):
@@ -264,6 +274,16 @@ def classify_provider_error(
         )
 
     if status_code in {503, 529}:
+        if any(
+                pattern in error_text
+                for pattern
+                in _CONTEXT_OVERFLOW_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.context_overflow,
+                retryable=False,
+            )
+
         return decision(
             ProviderErrorKind.overloaded,
             retryable=True,
@@ -279,6 +299,19 @@ def classify_provider_error(
     ):
         return decision(
             ProviderErrorKind.format_error,
+            retryable=False,
+        )
+
+    if (
+            status_code in {400, 500, 502}
+            and any(
+                pattern in error_text
+                for pattern
+                in _CONTEXT_OVERFLOW_PATTERNS
+            )
+    ):
+        return decision(
+            ProviderErrorKind.context_overflow,
             retryable=False,
         )
 
@@ -328,6 +361,16 @@ def classify_provider_error(
                 ProviderErrorKind.rate_limit,
                 retryable=True,
                 should_rotate_credential=True,
+            )
+
+        if any(
+                pattern in error_text
+                for pattern
+                in _CONTEXT_OVERFLOW_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.context_overflow,
+                retryable=False,
             )
 
         if any(
