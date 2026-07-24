@@ -147,8 +147,11 @@ Provider 品牌。
 
 ### ProviderProfile
 
-建议文件：
-`src/learn_hermes_agent/providers/profiles.py`
+文件：
+`src/learn_hermes_agent/providers/base.py`
+
+注册表文件：
+`src/learn_hermes_agent/providers/__init__.py`
 
 Profile 只保存静态声明：
 
@@ -166,7 +169,9 @@ Profile 只保存静态声明：
 - `openai` 作为别名
 
 Profile 不读取环境变量，不持有 API key，不创建 client，也不发送请求。注册表仅包含
-内置 Profile，不提前复制 Hermes 的用户插件扫描。
+内置 Profile，不提前复制 Hermes 的用户插件扫描。迁移期间
+`providers/base.py` 暂时同时保留旧 `ProviderTransport` Protocol；切换
+`AIAgent` 后删除旧 Protocol，最终文件边界与 Hermes 一致。
 
 ### ProviderRuntime
 
@@ -408,4 +413,3 @@ Python API 允许在本批发生一次明确迁移，不保留长期双接口。
 - 一次性失败 client 检查 primary / fallback 顺序和聚合错误
 - import / schema 一致性检查
 - `git diff --check`
-
