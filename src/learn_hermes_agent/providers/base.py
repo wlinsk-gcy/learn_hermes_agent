@@ -8,6 +8,34 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 # Protocol 用来定义“接口形状”。
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ProviderProfile:
+    """声明 Provider 的静态特征，不读取环境变量、不创建 Client、不发送请求。"""
+    name: str
+    api_mode: str
+    aliases: tuple[str, ...] = ()
+    default_base_url: str | None = None
+    api_key_env: str | None = None
+    requires_api_key: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError(
+                "Provider profile name must not be empty"
+            )
+        if not self.api_mode.strip():
+            raise ValueError(
+                "Provider profile api_mode must not be empty"
+            )
+        if self.requires_api_key and not self.api_key_env:
+            raise ValueError(
+                "Provider profile requiring an API key "
+                "must define api_key_env"
+            )
+
 
 from learn_hermes_agent.agent.messages import ChatMessage
 
