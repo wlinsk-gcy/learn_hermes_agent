@@ -33,6 +33,71 @@ class OpenAICompatibleClient:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
 
+    def create(self, **request_kwargs: Any) -> object:
+        """
+        request_kwargs -> JSON HTTP 请求 -> 原始 JSON 响应
+        这里不能调用 _parse_response()，也不能返回 NormalizedResponse；标准化属于 ChatCompletionsTransport
+        """
+        body = json.dumps(
+            request_kwargs
+        ).encode("utf-8")
+
+        http_request = request.Request(
+            self._url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": (
+                    f"Bearer {self._api_key}"
+                ),
+                "Content-Type": "application/json",
+            },
+        )
+
+        try:
+            with request.urlopen(
+                    http_request,
+                    timeout=self._timeout_seconds,
+            ) as response:
+                response_body = response.read().decode(
+                    "utf-8"
+                )
+        except error.HTTPError as exc:
+            error_body = exc.read().decode(
+                "utf-8",
+                errors="replace",
+            )
+            raise RuntimeError(
+                "Provider request failed with HTTP "
+                f"{exc.code}: "
+                f"{self._shorten(error_body)}"
+            ) from exc
+        except error.URLError as exc:
+            raise RuntimeError(
+                f"Provider request failed: {exc.reason}"
+            ) from exc
+        except TimeoutError as exc:
+            raise RuntimeError(
+                "Provider request timed out"
+            ) from exc
+
+        try:
+            return json.loads(response_body)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                "Provider returned invalid JSON"
+            ) from exc
+
+    @staticmethod
+    def _shorten(
+            text: str,
+            *,
+            max_length: int = 500,
+    ) -> str:
+        if len(text) <= max_length:
+            return text
+        return f"{text[:max_length]}..."
+
 
 class OpenAICompatibleProviderTransport:
     def __init__(
