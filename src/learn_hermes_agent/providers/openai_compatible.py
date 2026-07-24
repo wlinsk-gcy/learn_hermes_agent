@@ -4,6 +4,17 @@ import json
 from collections.abc import Iterable, Iterator
 from typing import Any
 from urllib import error, request
+from learn_hermes_agent.providers.errors import (
+    ProviderRequestError,
+)
+
+# 不保存全部 Header，只保留 retry-after 和 x-ratelimit-*，避免携带 Cookie 或认证信息
+_ALLOWED_HTTP_ERROR_HEADERS = frozenset({
+    "retry-after",
+})
+_ALLOWED_HTTP_ERROR_HEADER_PREFIXES = (
+    "x-ratelimit-",
+)
 
 
 class OpenAICompatibleClient:
@@ -73,6 +84,31 @@ class OpenAICompatibleClient:
         )
 
     @staticmethod
+    def _filter_http_error_headers(
+            exc: error.HTTPError,
+    ) -> dict[str, str]:
+        if exc.headers is None:
+            return {}
+
+        selected_headers: dict[str, str] = {}
+
+        for name, value in exc.headers.items():
+            normalized_name = str(name).lower()
+            allowed = (
+                    normalized_name
+                    in _ALLOWED_HTTP_ERROR_HEADERS
+                    or normalized_name.startswith(
+                        _ALLOWED_HTTP_ERROR_HEADER_PREFIXES
+                    )
+            )
+            if allowed:
+                selected_headers[normalized_name] = (
+                    str(value)
+                )
+
+        return selected_headers
+
+    @staticmethod
     def _read_http_error_body(
             exc: error.HTTPError,
     ) -> str:
@@ -86,6 +122,27 @@ class OpenAICompatibleClient:
             )
         finally:
             exc.close()
+
+    @classmethod
+    def _provider_error_from_http_error(
+            cls,
+            exc: error.HTTPError,
+    ) -> ProviderRequestError:
+        status_code = exc.code
+        response_headers = (
+            cls._filter_http_error_headers(exc)
+        )
+        response_body = cls._read_http_error_body(
+            exc
+        )
+
+        return ProviderRequestError(
+            "Provider request failed with HTTP "
+            f"{status_code}",
+            status_code=status_code,
+            response_headers=response_headers,
+            response_body=response_body,
+        )
 
     def _read_json_response(
             self,
@@ -104,12 +161,10 @@ class OpenAICompatibleClient:
                 )
         # 捕获 HTTP 状态码错误，比如：404这种，urllib 遇到这些状态码时会抛 HTTPError。
         except error.HTTPError as exc:
-            # 读取错误响应的正文。
-            error_body = self._read_http_error_body(exc)
-            raise RuntimeError(
-                "Provider request failed with HTTP "
-                f"{exc.code}: "
-                f"{self._shorten(error_body)}"
+            raise (
+                self._provider_error_from_http_error(
+                    exc
+                )
             ) from exc
         # 捕获网络层错误，比如：域名解析失败，连接被拒绝，base_url 写错等等
         except error.URLError as exc:
@@ -146,11 +201,10 @@ class OpenAICompatibleClient:
                 )
         # HTTP、网络和超时错误继续统一转换成 RuntimeError。
         except error.HTTPError as exc:
-            error_body = self._read_http_error_body(exc)
-            raise RuntimeError(
-                "Provider request failed with HTTP "
-                f"{exc.code}: "
-                f"{self._shorten(error_body)}"
+            raise (
+                self._provider_error_from_http_error(
+                    exc
+                )
             ) from exc
         except error.URLError as exc:
             raise RuntimeError(
