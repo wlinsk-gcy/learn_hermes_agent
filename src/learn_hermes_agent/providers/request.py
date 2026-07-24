@@ -37,6 +37,7 @@ def _request_provider_completion_once(
         request_kwargs: dict[str, Any],  # Transport 已经构造好的 model/messages/tools 等参数
         *,
         callbacks: ProviderStreamCallbacks | None = None,  # 不需要实时增量，走同步请求
+        stream_options_disabled: bool = False,
 ) -> object:
     """执行一次 Provider 请求。"""
     if callbacks is None:
@@ -53,21 +54,33 @@ def _request_provider_completion_once(
     stream_kwargs = dict(request_kwargs)
     stream_kwargs["stream"] = True
     # 读取调用方可能已经提供的 streaming 选项
-    stream_options = stream_kwargs.get(
-        "stream_options"
-    )
-    if stream_options is None:
-        stream_options = {}
-    elif not isinstance(stream_options, dict):
-        raise ValueError(
-            "stream_options must be a JSON object"
+    if stream_options_disabled:
+        stream_kwargs.pop(
+            "stream_options",
+            None,
         )
     else:
-        # 已提供字典：再次复制，避免修改嵌套原对象
-        stream_options = dict(stream_options)
-    # 要求 Provider 在结束 chunk 中返回 token usage
-    stream_options["include_usage"] = True
-    stream_kwargs["stream_options"] = stream_options
+        stream_options = stream_kwargs.get(
+            "stream_options"
+        )
+        if stream_options is None:
+            stream_options = {}
+        elif not isinstance(
+                stream_options,
+                dict,
+        ):
+            raise ValueError(
+                "stream_options must be a JSON object"
+            )
+        else:
+            stream_options = dict(
+                stream_options
+            )
+
+        stream_options["include_usage"] = True
+        stream_kwargs["stream_options"] = (
+            stream_options
+        )
 
     raw_stream = binding.client.create(
         **stream_kwargs
@@ -189,6 +202,9 @@ def request_provider_completion(
                 binding,
                 effective_request_kwargs,
                 callbacks=effective_callbacks,
+                stream_options_disabled=(
+                    state.stream_options_disabled
+                ),
             )
         # 只捕获结构化 Provider 错误
         except ProviderRequestError as exc:
