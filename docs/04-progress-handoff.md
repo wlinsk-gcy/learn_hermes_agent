@@ -2326,6 +2326,90 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 
 开始下一批前重新分析最新版 Hermes HEAD 的 streaming request lifecycle、request helper、interrupt 和 retry 边界，形成独立设计与实施计划。streaming 继续由 `AIAgent` / request helper 管理，不放入 `ProviderTransport`；本轮不直接开始 Anthropic、Codex、Gemini 或 credential pool。
 
+## 2026-07-24 Provider Streaming Request Lifecycle 已完成
+
+### 本次目标
+
+在保持现有 Profile、Runtime、Binding、Client、Transport 和 `AIAgent` 职责边界的前提下，为 Chat Completions 增加可选流式请求、增量回调、完整原始响应重建和安全 fallback 边界。
+
+### 已完成
+
+- 新增 `ProviderStreamCallbacks`，提供文本、reasoning 和 tool-call started 三类 best-effort 回调；显示层回调异常不会破坏 Provider 请求。
+- 新增携带 `text_emitted` 的 `ProviderStreamError`，用于区分可安全 fallback 和已经产生可见输出的失败。
+- 新增 `ChatCompletionStreamAccumulator`：
+  - 累加文本、reasoning、model、finish reason 和 usage。
+  - 按 tool-call `index` 聚合 id、name、arguments 和 `extra_content`。
+  - 接受 `choices=[]` 的 usage-only chunk。
+  - 空流或缺少 finish reason 时拒绝构造成功响应。
+  - 最终重建完整原始 Chat Completions 字典，不直接返回 `NormalizedResponse`。
+- `FakeProviderClient` 在 `stream=True` 时从同一个完整 scripted response 生成原始 delta chunks；同步路径保持不变。
+- 新增独立 `request_provider_completion()`：
+  - 无 callback 时直接使用同步 Client。
+  - Chat Completions 流式路径自动加入 `stream=True` 和 `stream_options.include_usage=True`。
+  - 消费 iterator、关闭可关闭流，并把底层迭代错误包装为 `ProviderStreamError`。
+  - 不负责 Transport 标准化或 fallback。
+- `AIAgent.run_conversation()` 增加可选 `stream_callback`，并将单次请求迁移到 request helper。
+- `AIAgent` 只在尚未成功发送可见文本时尝试下一个 Binding；文本或 reasoning 已显示后发生错误会立即重新抛出，防止 fallback 内容拼接到 partial output。
+- `OpenAICompatibleClient` 增加：
+  - 可复用 HTTP request 构造。
+  - `Accept: text/event-stream` 流式请求头。
+  - 惰性 HTTP response iterator 和确定的 response 关闭生命周期。
+  - SSE 空行分帧、多 `data:` 行聚合、comment 忽略、`[DONE]` 终止和 EOF 补发。
+  - HTTP、网络、timeout 和 SSE JSON 错误到 `RuntimeError` 的映射。
+
+### 修改文件
+
+- `src/learn_hermes_agent/providers/streaming.py`
+- `src/learn_hermes_agent/providers/fake.py`
+- `src/learn_hermes_agent/providers/request.py`
+- `src/learn_hermes_agent/providers/openai_compatible.py`
+- `src/learn_hermes_agent/agent/core.py`
+- `docs/00-overview.md`
+- `docs/02-roadmap.md`
+- `docs/04-progress-handoff.md`
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-design.md`
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`
+
+### 对照的 Hermes 源码
+
+- 参考 HEAD：`477c08b44766ace8b890faa72bf82ecbcf2b3ba8`
+- `agent/chat_completion_helpers.py`
+  - 流式 Chat Completions 请求、增量事件消费、tool call arguments 和 usage 聚合意图。
+- `agent/conversation_loop.py`
+  - streaming/non-streaming 选择、Provider 请求编排、partial output 和 fallback 边界。
+- `agent/transports/chat_completions.py`
+  - 完整原始响应继续进入无状态 Transport 的职责边界。
+
+### 验证方式
+
+- `uv run python -m compileall -q src` 退出码为 0。
+- Fake 文本流 callback 顺序与最终消息一致；usage-only chunk 正确更新 Agent usage。
+- Fake tool demo 保持 `user -> assistant(tool_calls) -> tool -> assistant`，`tool_call_id` 正确配对。
+- 空流在 callback 前失败时切换 fallback；已经显示 partial text 后的残缺流不调用 fallback。
+- 使用替换 `urlopen` 的一次性脚本验证 OpenAI-compatible 请求 body、Authorization、SSE Accept、timeout、惰性打开和 response 关闭，没有发送真实网络请求。
+- HTTP 503、`URLError`、`TimeoutError` 和无效 SSE JSON 均得到预期错误；Client、request helper、accumulator 和 Transport 完整链路通过。
+- 隔离应用目录下的 doctor、可用工具 schema、同步 fake chat 和 tool demo CLI 回归通过；当前环境返回 8 个经过 `check_fn` 可用性过滤的工具。
+- `git diff --check` 无 whitespace error；既有未跟踪 `sandbox/` 未修改。
+
+### 设计结论
+
+- Transport 继续只负责协议转换、请求参数构造、完整响应校验和标准化，不持有 Client、网络连接、streaming、retry 或 fallback。
+- Client 只负责原始 HTTP/SSE I/O；request helper 消费 chunk 并重建完整原始响应；`AIAgent` 管理 Provider 顺序和 fallback。
+- `ProviderClient` Protocol 仍只有 `create(**request_kwargs)`；同步响应和流式 iterator 共享同一个入口。
+- 当前流式模式由调用方提供 callback 显式启用；未提供 callback 时保持原同步路径。
+- callback 成功接收文本或 reasoning 后即视为产生可见输出，后续失败不能自动切换 Provider。
+
+### 尚未实现
+
+- 跨线程 interrupt、stale-stream watchdog、partial continuation 和完整 retry。
+- Anthropic Messages、Codex Responses 和 Gemini Native Provider。
+- credential pool / rotation、Provider 健康状态和完整 failover 状态机。
+- TUI 专用 reasoning/tool-call 渲染和跨入口统一流式事件协议。
+
+### 下一步
+
+开始 Gemini Native Provider 前，先重新分析参考仓库最新 HEAD 中 Gemini client facade、原生事件到通用 request lifecycle 的适配方式、thought signature、tool call 和 usage 语义，形成独立设计和实施计划。Gemini 不绕过当前 request helper/fallback 生命周期，也不把网络流生命周期放入 `ProviderTransport`。
+
 ## 后续进度模板
 
 复制以下模板追加到本文件末尾：

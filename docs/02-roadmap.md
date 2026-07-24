@@ -14,8 +14,8 @@
 
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
-- F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot 与 Provider Transport / Runtime Foundation 已完成。
-- 下一步重新对齐最新版 Hermes 的 streaming request lifecycle，并建立独立设计。
+- F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成。
+- 下一步先重新分析参考仓库最新 HEAD，再设计 Gemini Native Provider。
 
 ## Phase 0：项目基础与约定
 
@@ -246,7 +246,7 @@
 
 ## Phase 9：Provider Runtime 扩展
 
-状态：最小版与 Provider Transport / Runtime Foundation 已完成；高级 Provider 能力待后续批次。
+状态：最小版、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成；原生 Provider 和高级可靠性能力待后续批次。
 
 目标：把单一 OpenAI-compatible provider 扩展为 Hermes 风格 runtime。
 
@@ -259,10 +259,14 @@
 - 按 `api_mode` 注册的 Transport ABC 与 `chat_completions` Transport。
 - usage normalization。
 - `AIAgent` 持有的同步请求、Transport cache 和最小 fallback chain。
+- 独立 `request_provider_completion()`，无 callback 时保持同步，有 callback 时请求原始 Chat Completions chunk stream。
+- 文本、reasoning、tool-call arguments、finish reason 和 usage accumulator，以及 best-effort 增量回调。
+- Fake Client 原始流式 chunk 和 OpenAI-compatible SSE I/O、事件分帧、`[DONE]` 终止与 response 生命周期。
+- 流式请求在可见输出前失败时允许 fallback；已经显示文本或 reasoning 后失败时禁止拼接 fallback 输出。
 
 尚未实现：
 
-- streaming / interrupt。
+- 跨线程 interrupt、stale-stream watchdog 和 partial continuation。
 - Anthropic Messages。
 - Codex Responses。
 - Gemini Native client facade。
@@ -274,12 +278,15 @@
 - agent loop 不应该知道每个 provider 的原始响应结构。
 - Provider 品牌配置由 Profile/Runtime 解析，API 协议差异通过 Transport 收敛。
 - Transport 不拥有 Client、凭据、网络、streaming、interrupt、retry 或 fallback。
+- Client 只负责原始 HTTP/SSE I/O；request helper 消费流并重建完整原始响应；Transport 继续做无状态标准化。
 
 验收：
 
 - fake 与 OpenAI-compatible 请求经过同一个 `chat_completions` 标准化层。
 - primary 失败时 `AIAgent` 能按 Binding 顺序切换到 fake fallback。
 - CLI、tool demo、usage snapshot 和工具消息链保持可运行。
+- Fake/OpenAI-compatible 流式响应可以重建为完整原始响应，并继续通过同一个 Transport。
+- 空流、残缺流和 partial output 后的失败遵守既定 fallback 边界。
 
 ## Phase 10：安全、审批和执行环境
 
@@ -339,8 +346,9 @@
 已确认的后续顺序：
 
 1. Provider Transport / Runtime Foundation：已完成。
-2. 重新对齐最新版 Hermes 的 streaming request lifecycle，形成独立设计；streaming 不进入 Transport。
-3. 在 streaming 生命周期稳定后，依次设计 Anthropic Messages、Codex Responses、Gemini Native facade 和 credential/retry/failover hardening。
+2. Provider Streaming Request Lifecycle：已完成；streaming 位于 Client / request helper，不进入 Transport。
+3. 重新分析参考仓库最新 HEAD 后设计 Gemini Native Provider，使其复用当前 request lifecycle。
+4. 后续再分别设计 Anthropic Messages、Codex Responses 和 credential/retry/failover hardening。
 
 F1 与 Provider Foundation 文档见：
 
@@ -350,6 +358,8 @@ F1 与 Provider Foundation 文档见：
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`
 - `docs/plans/2026-07-24-provider-transport-runtime-foundation-design.md`
 - `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-design.md`
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`
 
 暂未实现：
 

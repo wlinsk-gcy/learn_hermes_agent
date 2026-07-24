@@ -81,6 +81,7 @@ CLI / Gateway / ACP / TUI
 - F1A：Session Identity / Persistent CWD，包括稳定 session runtime key、dispatch effective context 绑定、线程安全的进程内 cwd record、命令结束 cwd marker、terminal/file/checkpoint cwd 一致性，以及 CLI session 生命周期。
 - F1B：Persistent Environment Snapshot，包括 login shell bootstrap、同 session 跨调用的 `export` / `unset` 持久化、敏感变量过滤、原子候选提交、timeout 不提交、environment cache，以及 `/new` / compression continuation 生命周期。
 - Provider Transport / Runtime Foundation：增加静态 `ProviderProfile`、不可变 `ProviderRuntime`、`ProviderBinding`、原始 `ProviderClient`、按 `api_mode` 注册的 Transport 和 `chat_completions` 标准化，并把同步请求、Transport cache 和最小 fallback 编排迁移到 `AIAgent`。
+- Provider Streaming Request Lifecycle：增加独立 request helper、Chat Completions chunk accumulator、best-effort 增量回调、Fake/OpenAI-compatible 流式原始数据、SSE 解析和 response 生命周期，并按是否已经显示内容约束 fallback。
 
 Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
@@ -100,14 +101,17 @@ ProviderProfile
   -> ProviderRuntime
   -> ProviderBinding(runtime, client)
   -> AIAgent
-  -> ProviderTransport(api_mode)
+  -> ProviderTransport.build_kwargs()
+  -> request_provider_completion()
   -> ProviderClient.create()
+  -> ChatCompletionStreamAccumulator（仅流式路径）
+  -> ProviderTransport.normalize_response()
   -> NormalizedResponse
 ```
 
-Transport 只负责消息、工具、请求参数和响应格式，不持有 model、base URL、API key、timeout、Client、streaming 或 retry。Fake 与 OpenAI-compatible Client 都返回原始 Chat Completions 数据并经过同一个 Transport；fallback 顺序和状态由 `AIAgent` 管理。
+Transport 只负责消息、工具、请求参数和响应格式，不持有 model、base URL、API key、timeout、Client、streaming 或 retry。无 callback 时 request helper 保持同步调用；有 callback 时 Client 返回原始 chunk iterator，由 accumulator 重建完整 Chat Completions 字典，再进入同一个 Transport。fallback 顺序和状态仍由 `AIAgent` 管理。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A、F1B 与 Provider Foundation 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session runtime 和 Provider/Transport 职责意图。下一步重新分析最新版 Hermes 的 streaming request lifecycle 并建立独立设计；当前不实现 Anthropic、Codex Responses、Gemini Native、credential pool、approval UI、background/process、PTY 或 remote backend。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A、F1B、Provider Foundation 与 Streaming Request Lifecycle 对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session runtime、Provider/Transport 职责和 Chat Completions 流式请求意图。下一步先重新分析参考仓库最新 HEAD，再设计 Gemini Native Provider；当前不实现 Anthropic、Codex Responses、credential pool、复杂 retry、跨线程 interrupt、approval UI、background/process、PTY 或 remote backend。
 
 ## 文档地图
 
@@ -132,3 +136,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Bat
 - `docs/plans/2026-07-23-f1b-persistent-environment-snapshot-plan.md`：F1B Persistent Environment Snapshot 实施计划。
 - `docs/plans/2026-07-24-provider-transport-runtime-foundation-design.md`：Provider Transport / Runtime Foundation 设计。
 - `docs/plans/2026-07-24-provider-transport-runtime-foundation-plan.md`：Provider Transport / Runtime Foundation 实施计划。
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-design.md`：Provider Streaming Request Lifecycle 设计。
+- `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`：Provider Streaming Request Lifecycle 实施计划。
