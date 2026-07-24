@@ -9,6 +9,31 @@ from learn_hermes_agent.agent.messages import ChatMessage
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 
 
+class OpenAICompatibleClient:
+    def __init__(
+            self,
+            *,
+            base_url: str,
+            api_key: str,
+            timeout_seconds: float = 60.0,
+    ) -> None:
+        """新 Client 只保存执行 HTTP 请求需要的信息，不保存 model。模型会由 Transport 放进每次请求参数"""
+        if not base_url:
+            raise ValueError("base_url must not be empty")
+        if not api_key:
+            raise ValueError("api_key must not be empty")
+        if timeout_seconds <= 0:
+            raise ValueError(
+                "timeout_seconds must be positive"
+            )
+
+        self._url = (
+            f"{base_url.rstrip('/')}/chat/completions"
+        )
+        self._api_key = api_key
+        self._timeout_seconds = timeout_seconds
+
+
 class OpenAICompatibleProviderTransport:
     def __init__(
             self,
