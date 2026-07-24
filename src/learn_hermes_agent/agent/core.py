@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from learn_hermes_agent.agent.messages import ChatMessage, assistant_message, system_message, user_message
@@ -20,8 +20,23 @@ from learn_hermes_agent.providers.transports.base import (
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 from learn_hermes_agent.tools.checkpoint_manager import CheckpointManager
+from learn_hermes_agent.providers.request import (
+    request_provider_completion,
+)
+from learn_hermes_agent.providers.streaming import (
+    ProviderStreamCallbacks,
+)
 
-
+"""
+feat: Providers 流式请求生命周期 Task 6: AIAgent 流式编排与 fallback 边界 Step 1：接入 AIAgent
+最新调用链：
+AIAgent
+    → request_provider_completion
+    → Client
+    → streaming accumulator
+    → 原始完整响应
+    → Transport normalize
+"""
 class AIAgent:
     # *表示后面的参数必须用关键字传参，不能用位置传参
     def __init__(
@@ -76,11 +91,19 @@ class AIAgent:
             history: Sequence[ChatMessage] | None = None,
             system_prompt: str | None = None,
             tool_context: ToolExecutionContext | None = None,
+            stream_callback: Callable[[str], None] | None = None,
     ) -> list[ChatMessage]:
         self.last_context_compressed = False
         messages: list[ChatMessage] = list(history or [])
         messages.append(user_message(user_input))
 
+        stream_callbacks = (
+            ProviderStreamCallbacks(
+                on_text_delta=stream_callback,
+            )
+            if stream_callback is not None
+            else None
+        )
         self.iteration_budget = IterationBudget(self.max_iterations)
         while self.iteration_budget.consume():
             self._checkpoint_mgr.new_turn()
@@ -100,6 +123,7 @@ class AIAgent:
                 self._complete_with_fallback(
                     request_messages,
                     tools=tools,
+                    callbacks=stream_callbacks,
                 )
             )
             self._record_provider_response(normalized_response)
@@ -157,6 +181,7 @@ class AIAgent:
             messages: Sequence[ChatMessage],
             *,
             tools: Sequence[dict[str, Any]] | None = None,
+            callbacks: ProviderStreamCallbacks | None = None,
     ) -> NormalizedResponse:
         """
         完整拥有调用顺序：
@@ -204,8 +229,12 @@ class AIAgent:
                     )
                 )
 
-                raw_response = binding.client.create(
-                    **request_kwargs
+                raw_response = (
+                    request_provider_completion(
+                        binding,
+                        request_kwargs,
+                        callbacks=callbacks, # 不传 stream_callback 时，callbacks=None，仍然走原同步路径
+                    )
                 )
 
                 if not transport.validate_response(
