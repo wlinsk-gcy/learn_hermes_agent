@@ -50,9 +50,9 @@ class ProviderRuntime:
         if (
                 isinstance(self.timeout_seconds, bool)
                 or not isinstance(
-                    self.timeout_seconds,
-                    (int, float),
-                )
+            self.timeout_seconds,
+            (int, float),
+        )
                 or self.timeout_seconds <= 0
         ):
             raise ValueError(
@@ -156,15 +156,16 @@ def _resolve_provider_runtime(
             "openai/v1'"
         )
 
-    if profile.requires_api_key:
-        default_api_key_env = (
-                profile.api_key_env or ""
-        )
-        api_key_env = _get_string(
-            model_config,
-            "api_key_env",
-            default_api_key_env,
-        )
+    default_api_key_env = (
+            profile.api_key_env or ""
+    )
+    api_key_env = _get_string(
+        model_config,
+        "api_key_env",
+        default_api_key_env,
+    )
+
+    if api_key_env:
         api_key = os.environ.get(
             api_key_env,
             "",
@@ -176,6 +177,11 @@ def _resolve_provider_runtime(
                 f"provider {requested_provider!r}: "
                 f"{api_key_env}"
             )
+    elif profile.requires_api_key:
+        raise ValueError(
+            "Provider requires model.api_key_env: "
+            f"{requested_provider!r}"
+        )
     # 生成不可变 ProviderRuntime
     return ProviderRuntime(
         provider=profile.name,
