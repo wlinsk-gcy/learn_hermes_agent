@@ -37,6 +37,12 @@ class OpenAICompatibleClient:
         http_request = self._build_http_request(
             request_kwargs
         )
+        # 这里使用 is True，只有明确传入布尔值 True 才启用流式模式，避免 "true"、1 等意外值改变请求行为
+        if request_kwargs.get("stream") is True:
+            return self._iter_stream_response(
+                http_request
+            )
+
         return self._read_json_response(
             http_request
         )
@@ -49,16 +55,21 @@ class OpenAICompatibleClient:
             request_kwargs
         ).encode("utf-8")
 
+        headers = {
+            "Authorization": (
+                f"Bearer {self._api_key}"
+            ),
+            "Content-Type": "application/json",
+        }
+        # 这里使用 is True，只有明确传入布尔值 True 才启用流式模式，避免 "true"、1 等意外值改变请求行为
+        if request_kwargs.get("stream") is True:
+            headers["Accept"] = "text/event-stream"
+
         return request.Request(
             self._url,
             data=body,
             method="POST",
-            headers={
-                "Authorization": (
-                    f"Bearer {self._api_key}"
-                ),
-                "Content-Type": "application/json",
-            },
+            headers=headers,
         )
 
     def _read_json_response(
