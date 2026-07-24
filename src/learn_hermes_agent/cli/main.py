@@ -23,7 +23,9 @@ from learn_hermes_agent.config import (
     get_checkpoints_dir_path,
 )
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
-from learn_hermes_agent.providers.runtime import build_provider_transport
+from learn_hermes_agent.providers.runtime import (
+    build_provider_bindings,
+)
 from learn_hermes_agent.state.session_db import SessionStore
 from learn_hermes_agent.agent.memory_store import MemoryStore
 from learn_hermes_agent.agent.skills import SkillLibrary
@@ -177,10 +179,13 @@ def build_agent(
         *,
         tool_demo: bool = False
 ) -> AIAgent:
-    provider = build_provider_transport(config, tool_demo=tool_demo)
+    provider_bindings = build_provider_bindings(
+        config,
+        tool_demo=tool_demo,
+    )
 
     return AIAgent(
-        provider=provider,
+        provider_bindings=provider_bindings,
         max_iterations=config["agent"]["max_iterations"],
         context_compressor=build_context_compressor(config),
         checkpoints_enabled=config["checkpoints"]["enabled"],
