@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 
 from enum import Enum
 from dataclasses import dataclass
@@ -202,8 +203,58 @@ def _classification_text(
     return " ".join(parts).casefold()
 
 
+def _is_openrouter_upstream_error(
+        provider_error: ProviderRequestError | None,
+        provider: str,
+) -> bool:
+    if (
+            provider_error is None
+            or not provider_error.response_body
+    ):
+        return False
+
+    response_body = provider_error.response_body
+    provider_name = provider.strip().casefold()
+
+    try:
+        payload = json.loads(response_body)
+    except json.JSONDecodeError:
+        return (
+                provider_name == "openrouter"
+                and "provider returned error"
+                in response_body.casefold()
+        )
+
+    if not isinstance(payload, dict):
+        return False
+
+    error_payload = payload.get("error")
+    if not isinstance(error_payload, dict):
+        return False
+
+    outer_message = str(
+        error_payload.get("message") or ""
+    ).strip().casefold()
+    if outer_message != "provider returned error":
+        return False
+
+    if provider_name == "openrouter":
+        return True
+
+    metadata = error_payload.get("metadata")
+    return (
+            isinstance(metadata, dict)
+            and (
+                    "raw" in metadata
+                    or "provider_name" in metadata
+            )
+    )
+
+
 def classify_provider_error(
         error: BaseException,
+        *,
+        provider: str = "",
 ) -> ProviderErrorDecision:
     """根据结构化状态码生成基础恢复决策。"""
     provider_error = _find_provider_request_error(
@@ -267,6 +318,15 @@ def classify_provider_error(
                 retryable=True,
             )
 
+        if _is_openrouter_upstream_error(
+                provider_error,
+                provider,
+        ):
+            return decision(
+                ProviderErrorKind.upstream_rate_limit,
+                retryable=False,
+            )
+
         return decision(
             ProviderErrorKind.rate_limit,
             retryable=True,
@@ -292,10 +352,10 @@ def classify_provider_error(
     if (
             status_code in {500, 502}
             and any(
-                pattern in error_text
-                for pattern
-                in _REQUEST_VALIDATION_PATTERNS
-            )
+        pattern in error_text
+        for pattern
+        in _REQUEST_VALIDATION_PATTERNS
+    )
     ):
         return decision(
             ProviderErrorKind.format_error,
@@ -305,10 +365,10 @@ def classify_provider_error(
     if (
             status_code in {400, 500, 502}
             and any(
-                pattern in error_text
-                for pattern
-                in _CONTEXT_OVERFLOW_PATTERNS
-            )
+        pattern in error_text
+        for pattern
+        in _CONTEXT_OVERFLOW_PATTERNS
+    )
     ):
         return decision(
             ProviderErrorKind.context_overflow,
