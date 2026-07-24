@@ -13,8 +13,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "provider": "fake",
         # 默认模型
         "default": "fake-basic",
-        "base_url": "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
+        "base_url": None,
+        "api_key_env": None,
         "timeout_seconds": 60.0,
         "fallbacks": [],
     },
