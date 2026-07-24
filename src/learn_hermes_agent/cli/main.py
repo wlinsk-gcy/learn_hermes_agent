@@ -23,6 +23,9 @@ from learn_hermes_agent.config import (
     get_checkpoints_dir_path,
 )
 from learn_hermes_agent.model_tools import get_tool_definitions, handle_function_call
+from learn_hermes_agent.providers import (
+    get_provider_profile,
+)
 from learn_hermes_agent.providers.runtime import (
     build_provider_bindings,
 )
@@ -206,13 +209,38 @@ def run_doctor() -> int:
     print(f"config: {get_config_path()}")
     print(f"checkpoints: {get_checkpoints_dir_path()}")
     model_config = config["model"]
-    api_key_env = model_config["api_key_env"]
-    api_key_env_status = "set" if os.environ.get(api_key_env) else "missing"
+    profile = get_provider_profile(
+        model_config["provider"]
+    )
+
+    base_url = (
+            model_config.get("base_url")
+            or profile.default_base_url
+    )
+    api_key_env = (
+            model_config.get("api_key_env")
+            or profile.api_key_env
+    )
+
+    if api_key_env is None:
+        api_key_env_status = "not-required"
+    else:
+        api_key_env_status = (
+            "set"
+            if os.environ.get(api_key_env)
+            else "missing"
+        )
 
     print(f"provider: {model_config['provider']}")
     print(f"model: {model_config['default']}")
-    print(f"base_url: {model_config['base_url']}")
-    print(f"api_key_env: {api_key_env}")
+    print(
+        f"base_url: "
+        f"{base_url or 'not-configured'}"
+    )
+    print(
+        f"api_key_env: "
+        f"{api_key_env or 'not-configured'}"
+    )
     print(f"api_key_env_status: {api_key_env_status}")
     print(f"timeout_seconds: {model_config['timeout_seconds']}")
 
