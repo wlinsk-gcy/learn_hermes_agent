@@ -20,8 +20,6 @@ class ProviderProfile:
         tuple[str, str],
         ...
     ] = ()
-    # 表示该 Profile 是否属于本地推理端点
-    is_local: bool = False
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -47,12 +45,6 @@ class ProviderProfile:
             raise ValueError(
                 "Provider profile requiring an API key "
                 "must define api_key_env"
-            )
-
-        if not isinstance(self.is_local, bool):
-            raise TypeError(
-                "Provider profile is_local "
-                "must be a boolean"
             )
 
         if not isinstance(self.default_headers, tuple):
