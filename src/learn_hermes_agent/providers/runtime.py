@@ -7,18 +7,15 @@ from typing import Any
 from learn_hermes_agent.providers import (
     get_provider_profile,
 )
-from learn_hermes_agent.providers.base import ProviderTransport
-from learn_hermes_agent.providers.client import ProviderClient
+from learn_hermes_agent.providers.client import (
+    ProviderClient,
+)
 from learn_hermes_agent.providers.fake import (
     FakeProviderClient,
-    FakeProviderTransport,
     tool_demo_client,
-    tool_demo_provider,
 )
-from learn_hermes_agent.providers.fallback import FallbackProviderTransport
 from learn_hermes_agent.providers.openai_compatible import (
     OpenAICompatibleClient,
-    OpenAICompatibleProviderTransport,
 )
 
 
@@ -69,8 +66,6 @@ class ProviderBinding:
     runtime: ProviderRuntime
     client: ProviderClient
 
-
-OPENAI_COMPATIBLE_PROVIDERS = frozenset({"openai-compatible", "openai"})
 
 
 def _resolve_provider_runtime(
@@ -263,59 +258,6 @@ def build_provider_bindings(
             )
 
     return bindings
-
-
-def build_provider_transport(config: dict[str, Any], *, tool_demo: bool = False) -> ProviderTransport:
-    model_config = _get_model_config(config)
-
-    if tool_demo:
-        model = _get_string(model_config, "default", "fake-basic")
-        return tool_demo_provider(model=model)
-
-    primary_provider = _build_single_provider(model_config)
-    fallback_configs = model_config.get("fallbacks")
-
-    if not isinstance(fallback_configs, list) or not fallback_configs:
-        return primary_provider
-
-    providers: list[ProviderTransport] = [primary_provider]
-
-    for fallback_config in fallback_configs:
-        if not isinstance(fallback_config, dict):
-            continue
-        providers.append(_build_single_provider(fallback_config))
-
-    if len(providers) == 1:
-        return primary_provider
-
-    return FallbackProviderTransport(providers)
-
-
-def _build_single_provider(model_config: dict[str, Any]) -> ProviderTransport:
-    model = _get_string(model_config, "default", "fake-basic")
-    provider = _get_string(model_config, "provider", "fake").lower()
-
-    if provider == "fake":
-        return FakeProviderTransport(model=model)
-
-    if provider in OPENAI_COMPATIBLE_PROVIDERS:
-        base_url = _get_string(model_config, "base_url", "https://api.openai.com/v1")
-        api_key_env = _get_string(model_config, "api_key_env", "OPENAI_API_KEY")
-        api_key = os.environ.get(api_key_env, "")
-
-        if not api_key:
-            raise ValueError(f"Missing API key env var for provider {provider!r}: {api_key_env}")
-
-        timeout_seconds = _get_positive_float(model_config, "timeout_seconds", 60.0)
-
-        return OpenAICompatibleProviderTransport(
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            timeout_seconds=timeout_seconds,
-        )
-
-    raise ValueError(f"Unsupported model provider: {provider!r}")
 
 
 def _get_model_config(config: dict[str, Any]) -> dict[str, Any]:
