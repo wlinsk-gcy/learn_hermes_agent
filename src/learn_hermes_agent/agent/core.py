@@ -27,6 +27,9 @@ from learn_hermes_agent.providers.streaming import (
     ProviderStreamCallbacks,
     ProviderStreamError,
 )
+from learn_hermes_agent.providers.retry import (
+    RetryPolicy,
+)
 
 """
 feat: Providers 流式请求生命周期 Task 6: AIAgent 流式编排与 fallback 边界 Step 1：接入 AIAgent
@@ -38,6 +41,8 @@ AIAgent
     → 原始完整响应
     → Transport normalize
 """
+
+
 class AIAgent:
     # *表示后面的参数必须用关键字传参，不能用位置传参
     def __init__(
@@ -45,6 +50,7 @@ class AIAgent:
             provider_bindings: Sequence[ProviderBinding],
             *,
             max_iterations: int = 10,
+            retry_policy: RetryPolicy | None = None,
             registry: ToolRegistry | None = None,
             context_compressor: ContextCompressor | None = None,
             checkpoints_enabled: bool = False,
@@ -59,6 +65,14 @@ class AIAgent:
         self.provider_bindings = list(
             provider_bindings
         )
+        if retry_policy is None:
+            self.retry_policy = RetryPolicy()
+        elif not isinstance(retry_policy, RetryPolicy):
+            raise TypeError(
+                "retry_policy must be a RetryPolicy or None"
+            )
+        else:
+            self.retry_policy = retry_policy
         # 按 api_mode 复用无状态 Transport
         self._transport_cache: dict[
             str,
@@ -235,6 +249,7 @@ class AIAgent:
                         binding,
                         request_kwargs,
                         callbacks=callbacks,  # 不传 stream_callback 时，callbacks=None，仍然走原同步路径
+                        retry_policy=self.retry_policy,
                     )
                 )
 
