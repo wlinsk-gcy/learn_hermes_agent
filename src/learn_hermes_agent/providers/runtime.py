@@ -52,9 +52,9 @@ class ProviderRuntime:
         if (
                 isinstance(self.timeout_seconds, bool)
                 or not isinstance(
-                    self.timeout_seconds,
-                    (int, float),
-                )
+            self.timeout_seconds,
+            (int, float),
+        )
                 or self.timeout_seconds <= 0
         ):
             raise ValueError(
@@ -136,6 +136,44 @@ def _resolve_provider_runtime(
         base_url=base_url,
         api_key=api_key,
         timeout_seconds=timeout_seconds,
+    )
+
+
+def _build_provider_binding(
+        model_config: dict[str, Any],
+) -> ProviderBinding:
+    runtime = _resolve_provider_runtime(
+        model_config
+    )
+
+    if runtime.provider == "fake":
+        client: ProviderClient = FakeProviderClient(
+            model=runtime.model
+        )
+
+    elif runtime.api_mode == "chat_completions":
+        if not runtime.base_url or not runtime.api_key:
+            raise ValueError(
+                "OpenAI-compatible runtime requires "
+                "base_url and api_key"
+            )
+
+        client = OpenAICompatibleClient(
+            base_url=runtime.base_url,
+            api_key=runtime.api_key,
+            timeout_seconds=runtime.timeout_seconds,
+        )
+
+    else:
+        raise ValueError(
+            "No client available for provider "
+            f"{runtime.provider!r} with api_mode "
+            f"{runtime.api_mode!r}"
+        )
+
+    return ProviderBinding(
+        runtime=runtime,
+        client=client,
     )
 
 
