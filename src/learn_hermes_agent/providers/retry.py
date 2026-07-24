@@ -10,7 +10,9 @@ class RetryPolicy:
     # max_attempts=3 表示首次请求加最多两次重试
     # max_attempts=1 可以关闭重试
     max_attempts: int = 3
+    # 第一次重试前基础等待约 2 秒
     backoff_base_seconds: float = 2.0
+    # 无论指数增长或 Retry-After 多大，最终最多等待 60 秒
     backoff_cap_seconds: float = 60.0
 
     def __post_init__(self) -> None:
@@ -49,3 +51,25 @@ class RetryPolicy:
                 raise ValueError(
                     f"{name} must be finite and non-negative"
                 )
+
+
+def parse_retry_after(
+        value: str | None,
+) -> float | None:
+    """解析 Retry-After 的数字秒数形式。"""
+    if not isinstance(value, str):
+        return None
+
+    raw_value = value.strip()
+    if not raw_value:
+        return None
+
+    try:
+        seconds = float(raw_value)
+    except ValueError:
+        return None
+
+    if seconds < 0 or not math.isfinite(seconds):
+        return None
+
+    return seconds
