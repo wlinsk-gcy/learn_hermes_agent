@@ -4,6 +4,7 @@ import json
 from collections.abc import Iterable, Iterator
 from typing import Any
 from urllib import error, request
+
 from learn_hermes_agent.providers.errors import (
     ProviderRequestError,
 )
@@ -168,12 +169,16 @@ class OpenAICompatibleClient:
             ) from exc
         # 捕获网络层错误，比如：域名解析失败，连接被拒绝，base_url 写错等等
         except error.URLError as exc:
-            raise RuntimeError(
-                f"Provider request failed: {exc.reason}"
+            raise ProviderRequestError(
+                "Provider request failed"
             ) from exc
         except TimeoutError as exc:
-            raise RuntimeError(
+            raise ProviderRequestError(
                 "Provider request timed out"
+            ) from exc
+        except ConnectionError as exc:
+            raise ProviderRequestError(
+                "Provider connection failed"
             ) from exc
 
         try:
@@ -207,12 +212,16 @@ class OpenAICompatibleClient:
                 )
             ) from exc
         except error.URLError as exc:
-            raise RuntimeError(
-                f"Provider request failed: {exc.reason}"
+            raise ProviderRequestError(
+                "Provider request failed"
             ) from exc
         except TimeoutError as exc:
-            raise RuntimeError(
+            raise ProviderRequestError(
                 "Provider request timed out"
+            ) from exc
+        except ConnectionError as exc:
+            raise ProviderRequestError(
+                "Provider connection failed"
             ) from exc
 
     @staticmethod
