@@ -220,6 +220,7 @@ def _build_provider_binding(
         client = OpenAICompatibleClient(
             base_url=runtime.base_url,
             api_key=runtime.api_key,
+            default_headers=runtime.default_headers,
             timeout_seconds=runtime.timeout_seconds,
         )
 
