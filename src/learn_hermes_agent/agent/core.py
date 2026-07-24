@@ -30,6 +30,9 @@ from learn_hermes_agent.providers.streaming import (
 from learn_hermes_agent.providers.retry import (
     RetryPolicy,
 )
+from learn_hermes_agent.providers.state import (
+    ProviderBindingState,
+)
 
 """
 feat: Providers 流式请求生命周期 Task 6: AIAgent 流式编排与 fallback 边界 Step 1：接入 AIAgent
@@ -65,6 +68,12 @@ class AIAgent:
         self.provider_bindings = list(
             provider_bindings
         )
+        self.provider_binding_states: list[
+            ProviderBindingState
+        ] = [
+            ProviderBindingState()
+            for _ in self.provider_bindings
+        ]
         if retry_policy is None:
             self.retry_policy = RetryPolicy()
         elif not isinstance(retry_policy, RetryPolicy):
