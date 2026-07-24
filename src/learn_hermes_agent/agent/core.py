@@ -26,7 +26,7 @@ class AIAgent:
     # *表示后面的参数必须用关键字传参，不能用位置传参
     def __init__(
             self,
-            provider: ProviderTransport,
+            provider_bindings: Sequence[ProviderBinding],
             *,
             max_iterations: int = 10,
             registry: ToolRegistry | None = None,
@@ -34,7 +34,24 @@ class AIAgent:
             checkpoints_enabled: bool = False,
             checkpoint_max_snapshots: int = 20,
     ) -> None:
-        self.provider = provider
+        if not provider_bindings:
+            raise ValueError(
+                "AIAgent requires at least one "
+                "ProviderBinding"
+            )
+        # 按 primary/fallback 顺序保存候选 Provider
+        self.provider_bindings = list(
+            provider_bindings
+        )
+        # 按 api_mode 复用无状态 Transport
+        self._transport_cache: dict[
+            str,
+            ProviderTransport,
+        ] = {}
+        #  last_provider_*: 保存最近一次请求的可观察状态
+        self.last_provider_model: str | None = None
+        self.last_provider_index: int | None = None
+        self.last_provider_error: str | None = None
         self.max_iterations = max_iterations
         self.registry = registry or get_default_registry()
         self._checkpoint_mgr = CheckpointManager(
