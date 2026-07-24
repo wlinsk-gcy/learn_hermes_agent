@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Iterator
 from typing import Any
 from urllib import error, request
 
@@ -103,6 +104,127 @@ class OpenAICompatibleClient:
             raise RuntimeError(
                 "Provider returned invalid JSON"
             ) from exc
+
+    @staticmethod
+    def _iter_sse_events(
+            lines: Iterable[bytes],
+    ) -> Iterator[dict[str, Any]]:
+        """
+        SSE 的基本格式是：
+        data: {"choices":[...]}
+
+        data: {"choices":[...]}
+
+        data: [DONE]
+
+        空行用于分隔 event，[DONE] 表示流正常结束。
+        """
+        data_lines: list[str] = []
+
+        for raw_line in lines:
+            if not isinstance(
+                    raw_line,
+                    (bytes, bytearray),
+            ):
+                raise RuntimeError(
+                    "Provider SSE response lines "
+                    "must be bytes"
+                )
+
+            line = bytes(raw_line).decode(
+                "utf-8"
+            ).rstrip("\r\n")
+
+            # 遇到了空行。SSE 使用空行表示“一个 event 已结束”。
+            if not line:
+                if not data_lines:
+                    # 如果前面没有收集到任何 data:，这个空行没有意义，直接读取下一行。
+                    continue
+                # 一个 SSE event 可以包含多个 data: 行，因此把它们拼起来。
+                data = "\n".join(data_lines)
+                # 清空缓冲区，为下一个 event 做准备。
+                data_lines.clear()
+                # 把字符串解析成 Python 字典：'{"choices": [...]}' -> {"choices": [...]}
+                event = (
+                    OpenAICompatibleClient
+                    ._decode_sse_data(data)
+                )
+                if event is None:
+                    # 如果读到： data: [DONE] 解析结果就是 None。generator 中的 return 表示整个流结束，不再产生数据
+                    return
+                """
+                例如：
+                events = OpenAICompatibleClient._iter_sse_events(lines)
+                此时通常还没有处理所有数据。调用：
+                first_event = next(events)
+                函数开始读取 SSE，执行到：
+                yield event
+                把当前 event 返回给调用者，然后暂停在这里。
+                再次调用：
+                second_event = next(events)
+                函数从 yield event 后面继续执行，也就是执行：
+                continue
+                然后继续读取下一行 SSE。
+                """
+                # yield 的作用是：产出一个结果，同时暂停函数，等待下一次继续执行。
+                # 只要函数中出现 yield，它就不再是普通函数，而是 generator（生成器）
+                """
+                把这个 event 立即交给外面的消费者，例如：
+                for chunk in events:
+                    accumulator.add_chunk(chunk)
+                然后暂停，不会继续读取后面的网络数据。
+                """
+                yield event
+                # 当外部再次请求下一个 chunk 时，从这里恢复，进入下一轮循环。
+                continue
+
+            # 以冒号开头的是 SSE comment/keep-alive
+            if line.startswith(":"):
+                continue
+
+            # event、id、retry 等字段当前不参与
+            if not line.startswith("data:"):
+                continue
+
+            data_line = line[5:]
+            if data_line.startswith(" "):
+                data_line = data_line[1:]
+
+            data_lines.append(data_line)
+
+        # 某些兼容端点在 EOF 前不发送最后一个空行
+        if data_lines:
+            data = "\n".join(data_lines)
+            event = (
+                OpenAICompatibleClient
+                ._decode_sse_data(data)
+            )
+            if event is not None:
+                yield event
+
+    @staticmethod
+    def _decode_sse_data(
+            data: str,
+    ) -> dict[str, Any] | None:
+        """解码成：{"choices":[...]}"""
+        if data.strip() == "[DONE]":
+            return None
+
+        try:
+            event = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                "Provider stream returned "
+                "an invalid JSON event"
+            ) from exc
+
+        if not isinstance(event, dict):
+            raise RuntimeError(
+                "Provider stream event must be "
+                "a JSON object"
+            )
+
+        return event
 
     @staticmethod
     def _shorten(
