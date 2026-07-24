@@ -266,17 +266,28 @@ class AIAgent:
                 "total_tokens": usage.total_tokens,
                 "cached_tokens": usage.cached_tokens,
             }
+        #  现在 usage 状态直接来自 AIAgent，不再通过 getattr() 探测旧 Fallback Provider 对象
+        configured_model = (
+            self.provider_bindings[0].runtime.model
+        )
 
-        provider_model = self.provider.model
-        # 只有fallbackProvider才会有last_provider_model的更新，其他provider都是None
-        last_provider_model = getattr(self.provider, "last_provider_model", None)
-        last_provider_index = getattr(self.provider, "last_provider_index", None)
-        last_provider_error = getattr(self.provider, "last_error", None)
+        last_provider_model = (
+                self.last_provider_model
+                or configured_model
+        )
 
-        if not isinstance(last_provider_model, str) or not last_provider_model:
-            last_provider_model = provider_model
+        last_provider_index = (
+            self.last_provider_index
+        )
 
-        fallback_used = isinstance(last_provider_index, int) and last_provider_index > 0
+        last_provider_error = (
+            self.last_provider_error
+        )
+
+        fallback_used = (
+                isinstance(last_provider_index, int)
+                and last_provider_index > 0
+        )
 
         return {
             "last_finish_reason": self.last_finish_reason,
@@ -288,7 +299,7 @@ class AIAgent:
                 "cached_tokens": self.session_cached_tokens,
             },
             "provider": {
-                "configured_model": provider_model,
+                "configured_model": configured_model,
                 "last_model": last_provider_model,
                 "last_provider_index": last_provider_index,
                 "fallback_used": fallback_used,
