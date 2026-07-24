@@ -81,12 +81,15 @@ register_provider_profile(
 
 register_provider_profile(
     ProviderProfile(
-        name="local",
+        name="custom",
         api_mode="chat_completions",
-        aliases=("vllm",),
-        default_base_url="http://127.0.0.1:8000/v1",
+        aliases=(
+            "ollama",
+            "local",
+            "vllm",
+        ),
+        requires_base_url=True,
         requires_api_key=False,
-        is_local=True,
     )
 )
 
