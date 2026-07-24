@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from dataclasses import dataclass
+from collections.abc import Iterator
 
 
 # 采用与 Hermes 相同的 Enum 和小写成员名。暂时只定义当前可靠性链需要的分类，不复制其他 Provider 专有类型
@@ -79,29 +80,37 @@ class ProviderErrorDecision:
     retry_after_seconds: float | None = None  # 服务端要求等待的秒数
 
 
-def _find_provider_request_error(
+def _iter_error_chain(
         error: BaseException,
-) -> ProviderRequestError | None:
-    """沿异常链查找结构化 Provider 错误。"""
+) -> Iterator[BaseException]:
+    """安全、有限地遍历异常及其原因链。"""
     current: BaseException | None = error
     visited: set[int] = set()
 
     for _ in range(5):
         if current is None:
-            break
+            return
 
         identity = id(current)
         if identity in visited:
-            break
+            return
         visited.add(identity)
 
-        if isinstance(current, ProviderRequestError):
-            return current
+        yield current
 
         current = (
                 current.__cause__
                 or current.__context__
         )
+
+
+def _find_provider_request_error(
+        error: BaseException,
+) -> ProviderRequestError | None:
+    """沿异常链查找结构化 Provider 错误。"""
+    for current in _iter_error_chain(error):
+        if isinstance(current, ProviderRequestError):
+            return current
 
     return None
 
@@ -185,6 +194,22 @@ def classify_provider_error(
         return decision(
             ProviderErrorKind.format_error,
             retryable=False,
+        )
+
+    if any(
+            isinstance(
+                current,
+                (
+                        TimeoutError,
+                        ConnectionError,
+                        OSError,
+                ),
+            )
+            for current in _iter_error_chain(error)
+    ):
+        return decision(
+            ProviderErrorKind.timeout,
+            retryable=True,
         )
 
     return decision(
