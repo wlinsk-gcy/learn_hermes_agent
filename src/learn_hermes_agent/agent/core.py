@@ -8,7 +8,15 @@ from learn_hermes_agent.agent.context_compressor import ContextCompressor
 from learn_hermes_agent.agent.iteration_budget import IterationBudget
 from learn_hermes_agent.agent.tool_context import ToolExecutionContext
 from learn_hermes_agent.agent.tool_executor import execute_tool_calls_sequential
-from learn_hermes_agent.providers.base import ProviderTransport
+from learn_hermes_agent.providers.runtime import (
+    ProviderBinding,
+)
+from learn_hermes_agent.providers.transports import (
+    get_transport,
+)
+from learn_hermes_agent.providers.transports.base import (
+    ProviderTransport,
+)
 from learn_hermes_agent.providers.types import NormalizedResponse, ToolCall, Usage
 from learn_hermes_agent.tools.registry import ToolRegistry, get_default_registry
 from learn_hermes_agent.tools.checkpoint_manager import CheckpointManager
@@ -87,9 +95,9 @@ class AIAgent:
             # 3. 建立后续统一接入点： 未来 checkpoint 应在工具真正执行之前处理。如果执行逻辑散落在 AIAgent 中，checkpoint、terminal、并发和中断逻辑都会继续堆进去。
             # hermes也是这种结构
             execute_tool_calls_sequential(
-                self,                # AIAgent，提供 registry、valid_tool_names 和解析 helper
+                self,  # AIAgent，提供 registry、valid_tool_names 和解析 helper
                 assistant_response,  # 包含本轮全部 tool_calls
-                messages,            # 执行器向这里追加 role=tool 消息
+                messages,  # 执行器向这里追加 role=tool 消息
                 tool_context=tool_context,
             )
 
