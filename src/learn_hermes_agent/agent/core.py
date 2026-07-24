@@ -122,6 +122,30 @@ class AIAgent:
             f"Exceeded max_iterations={self.iteration_budget.max_total} before receiving a final assistant message."
         )
 
+    def _get_transport(
+            self,
+            api_mode: str,
+    ) -> ProviderTransport:
+        """
+        第一次请求 chat_completions
+            -> registry 创建 Transport
+            -> 放入 Agent cache
+
+        后续请求 chat_completions
+            -> 直接复用同一个无状态 Transport
+
+        缓存键是 API 协议，不是 Provider 名称。因此 openai 和未来其他兼容 Provider 可以共用同一个 ChatCompletionsTransport
+        """
+        transport = self._transport_cache.get(
+            api_mode
+        )
+
+        if transport is None:
+            transport = get_transport(api_mode)
+            self._transport_cache[api_mode] = transport
+
+        return transport
+
     def _record_provider_response(self, response: NormalizedResponse) -> None:
         self.last_finish_reason = response.finish_reason
         self.last_usage = response.usage
