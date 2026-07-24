@@ -28,6 +28,10 @@ class ProviderRuntime:
     api_mode: str
     timeout_seconds: float
     base_url: str | None = None
+    default_headers: tuple[
+        tuple[str, str],
+        ...
+    ] = ()
     api_key: str | None = field(
         default=None,
         repr=False,  # repr=False，避免打印对象时泄漏密钥
@@ -188,6 +192,7 @@ def _resolve_provider_runtime(
         model=model,
         api_mode=profile.api_mode,
         base_url=base_url,
+        default_headers=profile.default_headers,
         api_key=api_key,
         timeout_seconds=timeout_seconds,
     )
