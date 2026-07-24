@@ -1,12 +1,63 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from typing import Any
 
 from learn_hermes_agent.providers.base import ProviderTransport
+from learn_hermes_agent.providers.client import ProviderClient
 from learn_hermes_agent.providers.fake import FakeProviderTransport, tool_demo_provider
 from learn_hermes_agent.providers.fallback import FallbackProviderTransport
 from learn_hermes_agent.providers.openai_compatible import OpenAICompatibleProviderTransport
+
+
+@dataclass(frozen=True)
+class ProviderRuntime:
+    """一个 Provider 候选项已经解析完成的运行配置"""
+    provider: str
+    model: str
+    api_mode: str
+    timeout_seconds: float
+    base_url: str | None = None
+    api_key: str | None = field(
+        default=None,
+        repr=False,  # repr=False，避免打印对象时泄漏密钥
+    )
+
+    def __post_init__(self) -> None:
+        """__post_init__() 是 dataclass 的特殊方法，在自动生成的 __init__() 完成后立即调用。"""
+        if not self.provider.strip():
+            raise ValueError(
+                "Provider runtime provider must not be empty"
+            )
+        if not self.model.strip():
+            raise ValueError(
+                "Provider runtime model must not be empty"
+            )
+        if not self.api_mode.strip():
+            raise ValueError(
+                "Provider runtime api_mode must not be empty"
+            )
+        if (
+                isinstance(self.timeout_seconds, bool)
+                or not isinstance(
+                    self.timeout_seconds,
+                    (int, float),
+                )
+                or self.timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "Provider runtime timeout_seconds "
+                "must be positive"
+            )
+
+
+@dataclass(frozen=True)
+class ProviderBinding:
+    """把Provider运行配置与负责原始请求的 Client 配对"""
+    runtime: ProviderRuntime
+    client: ProviderClient
+
 
 OPENAI_COMPATIBLE_PROVIDERS = frozenset({"openai-compatible", "openai"})
 
