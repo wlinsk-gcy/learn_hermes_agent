@@ -29,16 +29,26 @@ class OpenAICompatibleClient:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
 
-    def create(self, **request_kwargs: Any) -> object:
-        """
-        request_kwargs -> JSON HTTP 请求 -> 原始 JSON 响应
-        这里不能调用 _parse_response()，也不能返回 NormalizedResponse；标准化属于 ChatCompletionsTransport
-        """
+    def create(
+            self,
+            **request_kwargs: Any,
+    ) -> object:
+        http_request = self._build_http_request(
+            request_kwargs
+        )
+        return self._read_json_response(
+            http_request
+        )
+
+    def _build_http_request(
+            self,
+            request_kwargs: dict[str, Any],
+    ) -> request.Request:
         body = json.dumps(
             request_kwargs
         ).encode("utf-8")
 
-        http_request = request.Request(
+        return request.Request(
             self._url,
             data=body,
             method="POST",
@@ -50,6 +60,10 @@ class OpenAICompatibleClient:
             },
         )
 
+    def _read_json_response(
+            self,
+            http_request: request.Request,
+    ) -> object:
         try:
             # with ... as response 的好处是：请求结束后会自动关闭连接资源
             with request.urlopen(
