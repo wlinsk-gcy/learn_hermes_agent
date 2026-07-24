@@ -257,6 +257,7 @@ class AIAgent:
                     request_provider_completion(
                         binding,
                         request_kwargs,
+                        state=self.provider_binding_states[index], # 每次请求都拿到与当前 binding 索引对应的状态
                         callbacks=callbacks,  # 不传 stream_callback 时，callbacks=None，仍然走原同步路径
                         retry_policy=self.retry_policy,
                     )

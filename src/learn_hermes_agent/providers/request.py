@@ -22,6 +22,9 @@ from learn_hermes_agent.providers.retry import (
     RetryPolicy,
     retry_delay,
 )
+from learn_hermes_agent.providers.state import (
+    ProviderBindingState,
+)
 
 
 def _utc_now() -> datetime:
@@ -139,6 +142,7 @@ def request_provider_completion(
         binding: ProviderBinding,
         request_kwargs: dict[str, Any],
         *,
+        state: ProviderBindingState,
         callbacks: ProviderStreamCallbacks | None = None,
         retry_policy: RetryPolicy | None = None,  # 可选重试策略
         sleep_fn: Callable[[float], None] = time.sleep,  # 执行计算出的等待时间的函数
@@ -146,6 +150,10 @@ def request_provider_completion(
         now_fn: Callable[[], datetime] = _utc_now,  # 获取当前 UTC 时间的函数，用于解析 HTTP-date
 ) -> object:
     """执行单个 binding 的 Provider 请求生命周期。"""
+    if not isinstance(state, ProviderBindingState):
+        raise TypeError(
+            "state must be a ProviderBindingState"
+        )
     if retry_policy is None:
         policy = RetryPolicy()
     elif not isinstance(retry_policy, RetryPolicy):
