@@ -60,6 +60,16 @@ register_provider_profile(
         api_key_env="OPENAI_API_KEY",
     )
 )
+register_provider_profile(
+    ProviderProfile(
+        name="openrouter",
+        api_mode="chat_completions",
+        default_base_url=(
+            "https://openrouter.ai/api/v1"
+        ),
+        api_key_env="OPENROUTER_API_KEY",
+    )
+)
 
 __all__ = [
     "ProviderProfile",
