@@ -2470,3 +2470,56 @@ Phase 10 Batch 6 Local Foreground Terminal 已完成。开始下一批前，必�
 
 ### 下一步
 ```
+
+## 2026-07-24 六 Provider Hermes 1:1 设计与计划已完成
+
+### 本次目标
+
+以最新参考仓库为准，把后续 Provider 路线重写为 OpenRouter、Azure Foundry、custom、Vertex、Alibaba、DeepSeek 六个 LLM Provider 的完整功能等价复刻，同时明确排除 OpenRouter 图片生成、Desktop UI 和 Web UI。
+
+### 当前源码基线
+
+- 当前分支：`feat/phase_10`。
+- Provider Reliability 旧计划 Task 1 至 Task 6 已完成。
+- 旧计划 Task 7 已推进至 Step 6：已经建立 per-binding state、streaming/stream-options 动态降级，并保证 `stream=True` 返回完整响应时直接使用当前响应，不重复发送同步请求。
+- 新计划 Task 1 会先读取当前代码、收口 Task 7 剩余语义，不重复已经完成的错误原语、retry、Profile 和 runtime 工作。
+
+### 对照的 Hermes 源码
+
+- 固定参考 HEAD：`a61183b56fdb45b9d2a0f2f6b8482e665ccf702f`。
+- Provider Profile 与插件：`providers/base.py`、`providers/__init__.py`、六个 `plugins/model-providers/*`。
+- runtime/CLI：`hermes_cli/runtime_provider.py`、`providers.py`、`models.py`、`model_setup_flows.py`、`model_switch.py`、`doctor.py`。
+- 请求生命周期：`agent/error_classifier.py`、`retry_utils.py`、`chat_completion_helpers.py`、`conversation_loop.py`。
+- 多协议和认证：`agent/transports/*`、`credential_pool.py`、`vertex_adapter.py`、`azure_identity_adapter.py`。
+
+### 已完成
+
+- 新设计文档：`docs/plans/2026-07-24-six-provider-hermes-parity-design.md`。
+- 新实施计划：`docs/plans/2026-07-24-six-provider-hermes-parity-plan.md`。
+- 新计划共 32 个 Task，从当前 Reliability 进度续接，覆盖共享可靠性、完整 Profile/插件、模型目录、credential pool、三种 API mode、Vertex/Azure 认证、六 Provider 专属行为、CLI、auxiliary usage 和最终验收。
+- 继续保持 `AIAgent -> request lifecycle -> ProviderClient -> ProviderTransport -> NormalizedResponse`；frozen `ProviderRuntime` 不保存动态状态。
+- `ollama`、`local`、`vllm` 等继续是 canonical `custom` 的 aliases，不新增固定地址。
+
+### 明确范围
+
+包含六个 canonical Provider：OpenRouter、Azure Foundry、custom、Vertex、Alibaba、DeepSeek。
+
+不包含：
+
+- OpenRouter 图片生成；
+- Desktop UI；
+- Web UI；
+- 独立 Gemini、Anthropic、Codex Provider；
+- Alibaba Coding Plan 独立 Provider；
+- 其他 Provider 插件。
+
+Azure Foundry 所需 Anthropic Messages、Codex Responses，以及 Vertex 所需 Gemini thinking helper 属于内部共享能力，不等于注册对应独立 Provider。
+
+### 文档提交
+
+- `814d530 docs: design six-provider Hermes parity`
+- `7946ead docs: plan six-provider Hermes parity`
+
+### 下一步
+
+使用 `superpowers:executing-plans` 执行 `docs/plans/2026-07-24-six-provider-hermes-parity-plan.md`。从 Task 1 Step 1 开始，先核对当前 `request.py`、`state.py`、`errors.py` 与旧计划 Task 7 的差异；源码仍由用户手工抄写，Codex 一次只提供一个小步骤并在用户抄写后自动验证。

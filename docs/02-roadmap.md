@@ -15,8 +15,9 @@
 - Phase 0 至 Phase 9 已完成当前路线中的最小版本。
 - Phase 10 Batch 1、Batch 2A 至 2E、Batch 3、Batch 4、Batch 5 和 Batch 6 已完成。
 - F1A Session Identity / Persistent CWD、F1B Persistent Environment Snapshot、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成。
-- Provider Reliability and Targeted OpenAI-Compatible Profiles 的设计与实施计划已完成，源码尚未开始。
-- 下一步执行该计划 Task 1：Provider 错误原语。
+- Provider Reliability 旧计划 Task 1 至 Task 6 已完成，Task 7 已推进至 Step 6。
+- 已按 Hermes HEAD `a61183b56fdb45b9d2a0f2f6b8482e665ccf702f` 完成六 Provider 1:1 设计和实施计划。
+- 下一步执行新计划 Task 1：从当前代码收口 streaming 动态降级语义。
 
 ## Phase 0：项目基础与约定
 
@@ -247,7 +248,7 @@
 
 ## Phase 9：Provider Runtime 扩展
 
-状态：最小版、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成；Provider Reliability 已完成设计，等待按计划实施。
+状态：最小版、Provider Transport / Runtime Foundation 与 Provider Streaming Request Lifecycle 已完成；Provider Reliability 已实现到旧计划 Task 7 Step 6；后续由六 Provider 1:1 计划统一接管。
 
 目标：把单一 OpenAI-compatible provider 扩展为 Hermes 风格 runtime。
 
@@ -264,21 +265,22 @@
 - 文本、reasoning、tool-call arguments、finish reason 和 usage accumulator，以及 best-effort 增量回调。
 - Fake Client 原始流式 chunk 和 OpenAI-compatible SSE I/O、事件分帧、`[DONE]` 终止与 response 生命周期。
 - 流式请求在可见输出前失败时允许 fallback；已经显示文本或 reasoning 后失败时禁止拼接 fallback 输出。
+- 结构化 Provider 错误、错误分类决策、HTTP header/body 安全保存。
+- 有界 retry/backoff、`Retry-After` 解析和单 binding 请求生命周期。
+- OpenRouter、Azure OpenAI v1 与 canonical custom 的基础 Profile/runtime/header 解析。
+- `ProviderBindingState` 和 per-binding streaming/stream-options 动态降级；streaming 返回完整响应时不会重复请求。
 
-已设计、尚未实现：
+新计划待实现：
 
-- 结构化 Provider 错误、限流分类和有界 retry/backoff。
 - stale-stream watchdog、attempt fence 和 partial continuation。
-- OpenRouter、Azure OpenAI v1 与 custom/Ollama/local/vLLM Profile。
-
-后续范围：
-
-- 用户主动 interrupt。
-- Anthropic Messages。
-- Codex Responses。
-- Gemini Native client facade。
-- Provider 插件发现。
+- 完整 Provider Profile、插件发现、模型目录和 runtime resolver。
 - credential pool / rotation、健康状态和完整 failover 状态机。
+- Azure Foundry 所需 Anthropic Messages 与 Codex Responses transports。
+- Vertex ADC/服务账号/OAuth2 token refresh 与动态 URL。
+- OpenRouter、Azure Foundry、custom、Vertex、Alibaba、DeepSeek 专属行为。
+- 六 Provider CLI 配置、模型切换、doctor、auxiliary usage/pricing。
+
+明确排除 OpenRouter 图片生成、Desktop UI、Web UI，以及独立 Gemini/Anthropic/Codex Provider。
 
 核心学习点：
 
@@ -354,9 +356,9 @@
 
 1. Provider Transport / Runtime Foundation：已完成。
 2. Provider Streaming Request Lifecycle：已完成；streaming 位于 Client / request helper，不进入 Transport。
-3. Provider Reliability and Targeted OpenAI-Compatible Profiles：设计完成，下一步按 Task 1 至 Task 14 实施。
-4. 完成可靠性基础后重新分析 Gemini Native Provider，使其复用当前 request lifecycle。
-5. 后续再分别设计 Anthropic Messages、Codex Responses 和 credential pool / rotation。
+3. Provider Reliability：旧计划 Task 1 至 Task 6 已完成，Task 7 已推进至 Step 6。
+4. 六 Provider Hermes 1:1 复刻：设计与计划已完成，下一步按新计划 Task 1 至 Task 32 实施。
+5. 本轮只注册 OpenRouter、Azure Foundry、custom、Vertex、Alibaba、DeepSeek；Anthropic Messages、Codex Responses 和 Gemini thinking helper 仅作为目标 Provider 的共享内部能力。
 
 F1 与 Provider Foundation 文档见：
 
@@ -370,6 +372,8 @@ F1 与 Provider Foundation 文档见：
 - `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`
 - `docs/plans/2026-07-24-provider-reliability-openai-compatible-design.md`
 - `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`
+- `docs/plans/2026-07-24-six-provider-hermes-parity-design.md`
+- `docs/plans/2026-07-24-six-provider-hermes-parity-plan.md`
 
 暂未实现：
 

@@ -82,7 +82,7 @@ CLI / Gateway / ACP / TUI
 - F1B：Persistent Environment Snapshot，包括 login shell bootstrap、同 session 跨调用的 `export` / `unset` 持久化、敏感变量过滤、原子候选提交、timeout 不提交、environment cache，以及 `/new` / compression continuation 生命周期。
 - Provider Transport / Runtime Foundation：增加静态 `ProviderProfile`、不可变 `ProviderRuntime`、`ProviderBinding`、原始 `ProviderClient`、按 `api_mode` 注册的 Transport 和 `chat_completions` 标准化，并把同步请求、Transport cache 和最小 fallback 编排迁移到 `AIAgent`。
 - Provider Streaming Request Lifecycle：增加独立 request helper、Chat Completions chunk accumulator、best-effort 增量回调、Fake/OpenAI-compatible 流式原始数据、SSE 解析和 response 生命周期，并按是否已经显示内容约束 fallback。
-- Provider Reliability and Targeted OpenAI-Compatible Profiles：设计与实施计划已完成，源码尚未开始；范围包括结构化错误、retry/backoff、限流语义、stale-stream watchdog、partial continuation，以及 OpenRouter、Azure OpenAI v1 和 vLLM/local。
+- Provider Reliability and Targeted OpenAI-Compatible Profiles：旧计划 Task 1 至 Task 6 已完成，Task 7 已推进至 Step 6；已经具备结构化错误、错误决策、retry/backoff、`Retry-After`、OpenRouter/Azure OpenAI v1/custom Profile 基础和 per-binding streaming 动态降级。
 
 Phase 10 Batch 3 至 Batch 6 已按以下顺序完成：
 
@@ -112,7 +112,7 @@ ProviderProfile
 
 Transport 只负责消息、工具、请求参数和响应格式，不持有 model、base URL、API key、timeout、Client、streaming 或 retry。无 callback 时 request helper 保持同步调用；有 callback 时 Client 返回原始 chunk iterator，由 accumulator 重建完整 Chat Completions 字典，再进入同一个 Transport。fallback 顺序和状态仍由 `AIAgent` 管理。
 
-Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A、F1B、Provider Foundation、Streaming Request Lifecycle 与当前 Reliability 设计对齐 Hermes HEAD `477c08b44766ace8b890faa72bf82ecbcf2b3ba8` 的 session runtime、Provider/Transport 职责、错误分类、流监督和 continuation 意图。下一步执行 Provider Reliability 计划 Task 1；credential rotation、完整 Azure Foundry、Anthropic、Codex Responses、Gemini、approval UI、background/process、PTY 和 remote backend 仍不在本批范围。
+Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Batch 6 对齐 Hermes HEAD `477c08b44` 的 terminal、local environment、destructive classifier 和 checkpoint ordering。F1A、F1B、Provider Foundation 与 Streaming Request Lifecycle 对齐旧 Hermes 基线；Provider 后续范围已重新审计 Hermes HEAD `a61183b56fdb45b9d2a0f2f6b8482e665ccf702f`。下一步执行六 Provider 1:1 复刻计划 Task 1，先从当前 Reliability Task 7 Step 6 续接并收口 streaming 动态降级，再实现 OpenRouter、Azure Foundry、custom、Vertex、Alibaba 和 DeepSeek 的完整共享链路与专属行为；不包含 OpenRouter 图片生成、Desktop UI 或 Web UI。
 
 ## 文档地图
 
@@ -141,3 +141,5 @@ Batch 5 对齐 Hermes HEAD `477c08b44` 和 checkpoint path fix `d7b36070e`；Bat
 - `docs/plans/2026-07-24-provider-streaming-request-lifecycle-plan.md`：Provider Streaming Request Lifecycle 实施计划。
 - `docs/plans/2026-07-24-provider-reliability-openai-compatible-design.md`：Provider Reliability 与三个目标端点设计。
 - `docs/plans/2026-07-24-provider-reliability-openai-compatible-plan.md`：Provider Reliability 与三个目标端点实施计划。
+- `docs/plans/2026-07-24-six-provider-hermes-parity-design.md`：六 Provider Hermes 1:1 功能等价设计和范围边界。
+- `docs/plans/2026-07-24-six-provider-hermes-parity-plan.md`：从当前 Reliability 进度续接的六 Provider 分步实施计划。
