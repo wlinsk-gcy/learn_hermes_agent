@@ -10,6 +10,42 @@ _OVERLOADED_PATTERNS = (
     "over capacity",
 )
 
+_BILLING_PATTERNS = (
+    "insufficient credits",
+    "insufficient_quota",
+    "insufficient balance",
+    "credits exhausted",
+    "payment required",
+    "billing hard limit",
+    "exceeded your current quota",
+    "out of funds",
+    "balance_depleted",
+)
+
+_RATE_LIMIT_PATTERNS = (
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "throttled",
+    "requests per minute",
+    "tokens per minute",
+    "try again in",
+    "retry after",
+    "resource_exhausted",
+)
+
+_AUTH_PATTERNS = (
+    "invalid api key",
+    "invalid_api_key",
+    "authentication",
+    "unauthorized",
+    "forbidden",
+    "invalid token",
+    "token expired",
+    "token revoked",
+    "access denied",
+)
+
 
 # 采用与 Hermes 相同的 Enum 和小写成员名。暂时只定义当前可靠性链需要的分类，不复制其他 Provider 专有类型
 class ProviderErrorKind(Enum):
@@ -236,6 +272,46 @@ def classify_provider_error(
             ProviderErrorKind.format_error,
             retryable=False,
         )
+
+    if status_code is None:
+        if any(
+                pattern in error_text
+                for pattern in _OVERLOADED_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.overloaded,
+                retryable=True,
+            )
+
+        if any(
+                pattern in error_text
+                for pattern in _BILLING_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.billing,
+                retryable=False,
+                should_rotate_credential=True,
+            )
+
+        if any(
+                pattern in error_text
+                for pattern in _RATE_LIMIT_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.rate_limit,
+                retryable=True,
+                should_rotate_credential=True,
+            )
+
+        if any(
+                pattern in error_text
+                for pattern in _AUTH_PATTERNS
+        ):
+            return decision(
+                ProviderErrorKind.auth,
+                retryable=False,
+                should_rotate_credential=True,
+            )
 
     if any(
             isinstance(
