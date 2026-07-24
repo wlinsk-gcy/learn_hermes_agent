@@ -17,8 +17,18 @@ class FakeProviderClient:
         )
         self._script_index = 0
 
-    def create(self, **request_kwargs: Any) -> object:
-        """不再直接返回 NormalizedResponse，而是模拟 Chat Completions 的原始 JSON。后续 fake 与真实 HTTP 响应都会经过相同 Transport"""
+    def create(
+            self,
+            **request_kwargs: Any,
+    ) -> object:
+        return self._next_response(
+            request_kwargs
+        )
+
+    def _next_response(
+            self,
+            request_kwargs: dict[str, Any],
+    ) -> object:
         if self._script_index < len(
                 self._scripted_responses
         ):
